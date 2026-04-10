@@ -47,6 +47,7 @@ if (!admin.apps.length) {
 const db = admin.database();
 
 const projects = [
+  "solarbr",
   "beiersdorfin",
   "pgpl",
   "diageotz",
