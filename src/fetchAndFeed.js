@@ -158,6 +158,21 @@ async function main() {
   const startTime = Date.now();
   let cycleCount = 0;
 
+  // 🔹 Fetch Baseline Data (Compare current run against the state from the end of the previous minute)
+  console.log("📥 Fetching baseline data from Firebase for delta calculation...");
+  let baselineData = {};
+  try {
+    const snapshot = await db.ref("trax/queue_metrics").once("value");
+    if (snapshot.exists()) {
+      baselineData = snapshot.val();
+      console.log("✅ Baseline data loaded.");
+    } else {
+      console.log("⚠️ No baseline data found. First run?");
+    }
+  } catch (err) {
+    console.warn("⚠️ Could not fetch baseline data:", err.message);
+  }
+
   // 🔹 Hard kill safety net — 58s වෙද්දී force exit
   const hardKillTimer = setTimeout(() => {
     console.log("⏱️ Hard kill timer triggered. Force exiting.");
@@ -185,7 +200,26 @@ async function main() {
 
       const allData = {};
       results.forEach(({ project, data }) => {
-        if (data) allData[project] = data;
+        if (!data) return;
+
+        // 🔹 Calculate Deltas against Baseline
+        const processedData = {};
+        Object.keys(data).forEach(metricName => {
+          const current = data[metricName];
+          const baseline = baselineData[project] ? baselineData[project][metricName] : null;
+          
+          let delta = 0;
+          if (baseline && baseline.total !== null && current.total !== null) {
+            delta = current.total - baseline.total;
+          }
+
+          processedData[metricName] = {
+            ...current,
+            minuteDelta: delta
+          };
+        });
+
+        allData[project] = processedData;
       });
 
       // 🔹 Firebase update with timeout
