@@ -5,6 +5,10 @@ on:
     - cron: '* * * * *'
   workflow_dispatch:
 
+concurrency:
+  group: feed-firebase
+  cancel-in-progress: true
+
 jobs:
   feed:
     runs-on: ubuntu-latest
