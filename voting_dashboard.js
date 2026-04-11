@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Voting Engine Real-Time Monitor
 // @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  Monitor Voting Engine metrics from Firebase with 1-minute deltas.
+// @version      2.0
+// @description  Monitor Voting Engine with a compact table layout.
 // @author       Antigravity
 // @match        *://monitor.trax-cloud.com/*
 // @match        *://*.firebaseio.com/*
@@ -14,104 +14,84 @@
 (function() {
     'use strict';
 
-    // 🔴 SETTINGS - PASTE YOUR FIREBASE URL HERE
     const FIREBASE_DB_URL = "https://projectallow-default-rtdb.firebaseio.com/"; 
 
-    // 🔹 Initialize Firebase
     if (!firebase.apps.length) {
         firebase.initializeApp({ databaseURL: FIREBASE_DB_URL });
     }
     const db = firebase.database();
 
-    // 🔹 Styles
     GM_addStyle(`
         #voting-monitor {
             position: fixed;
             bottom: 20px;
             right: 20px;
-            width: 350px;
-            max-height: 80vh;
-            background: rgba(10, 20, 10, 0.85);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(0, 255, 136, 0.2);
+            width: 380px;
+            background: rgba(10, 25, 15, 0.9);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(0, 255, 136, 0.3);
             border-radius: 16px;
             color: #fff;
-            font-family: 'Inter', sans-serif;
+            font-family: 'Segoe UI', system-ui, sans-serif;
             z-index: 10000;
             display: flex;
             flex-direction: column;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.6);
             overflow: hidden;
             transition: all 0.3s ease;
         }
         #voting-monitor-header {
-            padding: 15px;
-            background: rgba(0, 255, 136, 0.1);
+            padding: 12px 15px;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 136, 0.1));
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            cursor: move;
         }
         #voting-monitor-header h3 {
             margin: 0;
-            font-size: 14px;
+            font-size: 13px;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
             color: #00ff88;
         }
-        #voting-monitor-content {
-            padding: 10px;
+        #voting-table-container {
+            max-height: 60vh;
             overflow-y: auto;
-            flex-grow: 1;
+            scrollbar-width: thin;
         }
-        .project-card {
-            margin-bottom: 15px;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 8px;
-            padding: 10px;
-        }
-        .project-name {
-            font-weight: bold;
-            font-size: 13px;
-            margin-bottom: 8px;
-            color: #aaa;
-            border-left: 3px solid #00ff88;
-            padding-left: 8px;
-        }
-        .metric-row {
-            display: flex;
-            justify-content: space-between;
+        table.voting-table {
+            width: 100%;
+            border-collapse: collapse;
             font-size: 12px;
-            padding: 4px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
-        .metric-name { width: 140px; }
-        .metric-value { font-weight: 600; text-align: right; width: 60px; }
-        .metric-delta { 
-            width: 60px; 
-            text-align: right; 
-            font-size: 11px;
-            padding: 1px 4px;
-            border-radius: 4px;
+        table.voting-table th {
+            position: sticky;
+            top: 0;
+            background: #061f12;
+            padding: 10px;
+            text-align: left;
+            color: #4ade80;
+            font-weight: 500;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            z-index: 1;
         }
-        .delta-up { color: #ff4d4d; background: rgba(255, 77, 77, 0.1); }
-        .delta-down { color: #00ff88; background: rgba(0, 255, 136, 0.1); }
-        .delta-zero { color: #666; }
-        .last-updated {
-            font-size: 10px;
-            text-align: center;
-            padding: 8px;
-            color: #555;
+        table.voting-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
         }
-        #voting-minimize {
-            cursor: pointer;
-            font-size: 18px;
-            padding: 0 5px;
-        }
+        .p-name { font-weight: 600; color: #bdf6d9; width: 180px; }
+        .v-val { font-weight: 700; text-align: right; font-family: monospace; font-size: 13px; color: #fff; }
+        .v-delta { font-size: 10px; padding: 2px 4px; border-radius: 4px; margin-left: 5px; min-width: 35px; display: inline-block; text-align: center; }
+        
+        .up { color: #ff4d4d; background: rgba(255, 77, 77, 0.15); }
+        .down { color: #00ff88; background: rgba(0, 255, 136, 0.15); }
+        .zero { color: #555; background: rgba(255,255,255,0.05); }
+
+        .last-updated { font-size: 10px; text-align: center; padding: 10px; color: #4ade80; background: #010a05; opacity: 0.6; }
+        #voting-minimize { cursor: pointer; color: #4ade80; font-size: 18px; }
     `);
 
-    // 🔹 Create UI
     const container = document.createElement('div');
     container.id = 'voting-monitor';
     container.innerHTML = `
@@ -119,83 +99,59 @@
             <h3>Voting Engine Monitor</h3>
             <span id="voting-minimize">−</span>
         </div>
-        <div id="voting-monitor-content">
-            <div style="text-align:center; padding: 20px; color: #666;">Waiting for data...</div>
+        <div id="voting-table-container">
+            <table class="voting-table">
+                <thead>
+                    <tr>
+                        <th>PROJECT</th>
+                        <th style="text-align:right">VALUE</th>
+                    </tr>
+                </thead>
+                <tbody id="voting-table-body">
+                    <tr><td colspan="2" style="text-align:center; padding: 20px; color: #4ade80;">Waiting for data...</td></tr>
+                </tbody>
+            </table>
         </div>
         <div class="last-updated" id="voting-last-updated">Never updated</div>
     `;
     document.body.appendChild(container);
 
-    // 🔹 Listen for Updates (engine-voting/grafana/queue_metrics)
     db.ref("engine-voting/grafana/queue_metrics").on("value", (snapshot) => {
         const data = snapshot.val();
         if (!data) return;
 
+        const body = document.getElementById('voting-table-body');
         let html = '';
         const projects = Object.keys(data).filter(k => k !== '_lastUpdated');
         
-        projects.forEach(project => {
-            html += `<div class="project-card">
-                <div class="project-name">${project.toUpperCase()}</div>`;
-            
-            const metrics = data[project];
-            Object.keys(metrics).forEach(mName => {
-                const m = metrics[mName];
-                const deltaClass = m.minuteDelta > 0 ? 'delta-up' : (m.minuteDelta < 0 ? 'delta-down' : 'delta-zero');
-                const deltaText = m.minuteDelta > 0 ? `+${m.minuteDelta}` : (m.minuteDelta === 0 ? '±0' : m.minuteDelta);
-                
-                html += `
-                    <div class="metric-row">
-                        <span class="metric-value">${m.total}</span>
-                        <span class="metric-delta ${deltaClass}">${deltaText}</span>
-                    </div>
-                `;
-            });
-            html += `</div>`;
+        projects.forEach(p => {
+            const metrics = data[p];
+            // Since this feeder only has one metric (Voting Engine), we'll grab the first one found or specifically 'Voting Engine'
+            const mKey = Object.keys(metrics)[0];
+            const m = metrics[mKey] || { total: 0, minuteDelta: 0 };
+
+            const deltaClass = m.minuteDelta > 0 ? 'up' : (m.minuteDelta < 0 ? 'down' : 'zero');
+            const deltaText = m.minuteDelta > 0 ? `+${m.minuteDelta}` : (m.minuteDelta === 0 ? '±0' : m.minuteDelta);
+
+            html += `
+                <tr>
+                    <td class="p-name">${p.toUpperCase()}</td>
+                    <td style="text-align:right">
+                        <span class="v-val">${m.total}</span><span class="v-delta ${deltaClass}">${deltaText}</span>
+                    </td>
+                </tr>
+            `;
         });
 
-        document.getElementById('voting-monitor-content').innerHTML = html;
-        document.getElementById('voting-last-updated').innerText = `Last Updated: ${new Date(data._lastUpdated).toLocaleTimeString()}`;
+        body.innerHTML = html;
+        document.getElementById('voting-last-updated').innerText = `Updated: ${new Date(data._lastUpdated).toLocaleTimeString()}`;
     });
 
-    // 🔹 Interactivity (Minimize)
     let minimized = false;
     document.getElementById('voting-minimize').onclick = () => {
         minimized = !minimized;
-        document.getElementById('voting-monitor-content').style.display = minimized ? 'none' : 'block';
+        document.getElementById('voting-table-container').style.display = minimized ? 'none' : 'block';
         document.getElementById('voting-minimize').innerText = minimized ? '+' : '−';
     };
-
-    // 🔹 Make Draggable
-    let isDragging = false;
-    let currentX;
-    let currentY;
-    let initialX;
-    let initialY;
-    let xOffset = 0;
-    let yOffset = 0;
-
-    const dragItem = document.getElementById('voting-monitor-header');
-    dragItem.addEventListener("mousedown", dragStart);
-    document.addEventListener("mousemove", drag);
-    document.addEventListener("mouseup", dragEnd);
-
-    function dragStart(e) {
-        initialX = e.clientX - xOffset;
-        initialY = e.clientY - yOffset;
-        if (e.target === dragItem || dragItem.contains(e.target)) { isDragging = true; }
-    }
-    function drag(e) {
-        if (isDragging) {
-            e.preventDefault();
-            currentX = e.clientX - initialX;
-            currentY = e.clientY - initialY;
-            xOffset = currentX;
-            yOffset = currentY;
-            setTranslate(currentX, currentY, container);
-        }
-    }
-    function setTranslate(xPos, yPos, el) { el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)"; }
-    function dragEnd(e) { isDragging = false; }
 
 })();
