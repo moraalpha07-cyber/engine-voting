@@ -105,11 +105,10 @@
                     <tr>
                         <th>PROJECT</th>
                         <th style="text-align:right">TOTAL</th>
-                        <th style="text-align:right">VOTING ENGINE</th>
                     </tr>
                 </thead>
                 <tbody id="trax-table-body">
-                    <tr><td colspan="3" style="text-align:center; padding: 20px; color: #475569;">Waiting for data...</td></tr>
+                    <tr><td colspan="2" style="text-align:center; padding: 20px; color: #475569;">Waiting for data...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -133,22 +132,15 @@
             // But usually the user wants "Validation" or just a representative metric.
             // I'll look for "Validation" for "TOTAL" column or sum.
             const main = metrics["Validation"] || { total: 0, minuteDelta: 0 };
-            const voting = metrics["Voting Engine"] || { total: 0, minuteDelta: 0 };
 
             const mDeltaClass = main.minuteDelta > 0 ? 'up' : (main.minuteDelta < 0 ? 'down' : 'zero');
             const mDeltaText = main.minuteDelta > 0 ? `+${main.minuteDelta}` : (main.minuteDelta === 0 ? '±0' : main.minuteDelta);
-            
-            const vDeltaClass = voting.minuteDelta > 0 ? 'up' : (voting.minuteDelta < 0 ? 'down' : 'zero');
-            const vDeltaText = voting.minuteDelta > 0 ? `+${voting.minuteDelta}` : (voting.minuteDelta === 0 ? '±0' : voting.minuteDelta);
 
             html += `
                 <tr>
                     <td class="p-name">${p.toUpperCase()}</td>
                     <td style="text-align:right">
                         <span class="v-val">${main.total}</span><span class="v-delta ${mDeltaClass}">${mDeltaText}</span>
-                    </td>
-                    <td style="text-align:right">
-                        <span class="v-val">${voting.total}</span><span class="v-delta ${vDeltaClass}">${vDeltaText}</span>
                     </td>
                 </tr>
             `;
