@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Masking Queue Real-Time Monitor
 // @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  Monitor Masking Queue metrics from Firebase with 1-minute deltas.
+// @version      2.0
+// @description  Monitor Masking Queue with 2-column table layout and search.
 // @author       Antigravity
 // @match        *://monitor.trax-cloud.com/*
 // @match        *://*.firebaseio.com/*
@@ -14,189 +14,188 @@
 (function() {
     'use strict';
 
-    // 🔴 SETTINGS - PASTE YOUR FIREBASE URL HERE
     const FIREBASE_DB_URL = "https://projectallow-default-rtdb.firebaseio.com/"; 
 
-    // 🔹 Initialize Firebase
     if (!firebase.apps.length) {
         firebase.initializeApp({ databaseURL: FIREBASE_DB_URL });
     }
     const db = firebase.database();
 
-    // 🔹 Styles
     GM_addStyle(`
         #masking-monitor {
             position: fixed;
             top: 20px;
             left: 20px;
-            width: 350px;
-            max-height: 80vh;
-            background: rgba(15, 15, 15, 0.85);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 480px;
+            background: rgba(10, 10, 10, 0.9);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 100, 0, 0.3);
             border-radius: 16px;
             color: #fff;
-            font-family: 'Inter', sans-serif;
+            font-family: 'Segoe UI', system-ui, sans-serif;
             z-index: 10000;
             display: flex;
             flex-direction: column;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.6);
             overflow: hidden;
             transition: all 0.3s ease;
         }
         #masking-monitor-header {
-            padding: 15px;
-            background: rgba(255, 100, 0, 0.1);
+            padding: 12px 15px;
+            background: linear-gradient(90deg, rgba(255, 100, 0, 0.2), transparent);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            cursor: move;
         }
         #masking-monitor-header h3 {
             margin: 0;
-            font-size: 14px;
+            font-size: 13px;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
             color: #ff9f43;
         }
-        #masking-monitor-content {
-            padding: 10px;
-            overflow-y: auto;
-            flex-grow: 1;
+        #masking-search-container {
+            padding: 8px 12px;
+            background: rgba(255,255,255,0.03);
+            border-bottom: 1px solid rgba(255,255,255,0.05);
         }
-        .project-card {
-            margin-bottom: 15px;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 8px;
-            padding: 10px;
-        }
-        .project-name {
-            font-weight: bold;
-            font-size: 13px;
-            margin-bottom: 8px;
-            color: #aaa;
-            border-left: 3px solid #ff9f43;
-            padding-left: 8px;
-        }
-        .metric-row {
-            display: flex;
-            justify-content: space-between;
+        #masking-search {
+            width: 100%;
+            background: rgba(255,255,255,0.05);
+            border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 6px;
+            color: #fff;
+            padding: 6px 10px;
             font-size: 12px;
-            padding: 4px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+            outline: none;
         }
-        .metric-name { width: 140px; }
-        .metric-value { font-weight: 600; text-align: right; width: 60px; }
-        .metric-delta { 
-            width: 60px; 
-            text-align: right; 
-            font-size: 11px;
-            padding: 1px 4px;
-            border-radius: 4px;
+        #masking-search:focus { border-color: rgba(255, 100, 0, 0.5); }
+
+        #masking-table-container {
+            max-height: 60vh;
+            overflow-y: auto;
+            scrollbar-width: thin;
+            scrollbar-color: rgba(255, 100, 0, 0.3) transparent;
         }
-        .delta-up { color: #ff4d4d; background: rgba(255, 77, 77, 0.1); }
-        .delta-down { color: #00ff88; background: rgba(0, 255, 136, 0.1); }
-        .delta-zero { color: #666; }
-        .last-updated {
-            font-size: 10px;
-            text-align: center;
-            padding: 8px;
-            color: #555;
+        table.masking-table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 12px;
         }
-        #masking-minimize {
-            cursor: pointer;
-            font-size: 18px;
-            padding: 0 5px;
+        table.masking-table th {
+            position: sticky;
+            top: 0;
+            background: #1a1a1a;
+            padding: 10px;
+            text-align: left;
+            color: #888;
+            font-weight: 500;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            z-index: 1;
         }
+        table.masking-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
+        }
+        .project-name { font-weight: 600; color: #ddd; width: 180px; }
+        .m-val { font-weight: 700; text-align: right; font-family: monospace; font-size: 13px; }
+        .m-delta { font-size: 10px; padding: 2px 4px; border-radius: 4px; margin-left: 5px; min-width: 35px; display: inline-block; text-align: center; }
+        
+        .up { color: #ff4d4d; background: rgba(255, 77, 77, 0.15); }
+        .down { color: #00ff88; background: rgba(0, 255, 136, 0.15); }
+        .zero { color: #555; background: rgba(255,255,255,0.05); }
+
+        .last-updated { font-size: 10px; text-align: center; padding: 10px; color: #555; background: #0a0a0a; }
+        #masking-minimize { cursor: pointer; color: #888; font-size: 18px; }
+        #masking-minimize:hover { color: #fff; }
     `);
 
-    // 🔹 Create UI
     const container = document.createElement('div');
     container.id = 'masking-monitor';
     container.innerHTML = `
         <div id="masking-monitor-header">
-            <h3>Masking Queue Monitor</h3>
+            <h3>Masking Monitor</h3>
             <span id="masking-minimize">−</span>
         </div>
-        <div id="masking-monitor-content">
-            <div style="text-align:center; padding: 20px; color: #666;">Waiting for data...</div>
+        <div id="masking-search-container">
+            <input type="text" id="masking-search" placeholder="Search projects...">
+        </div>
+        <div id="masking-table-container">
+            <table class="masking-table">
+                <thead>
+                    <tr>
+                        <th>PROJECT</th>
+                        <th style="text-align:right">MASKING</th>
+                        <th style="text-align:right">ENGINE</th>
+                    </tr>
+                </thead>
+                <tbody id="masking-table-body">
+                    <tr><td colspan="3" style="text-align:center; padding: 20px; color: #666;">Waiting for data...</td></tr>
+                </tbody>
+            </table>
         </div>
         <div class="last-updated" id="masking-last-updated">Never updated</div>
     `;
     document.body.appendChild(container);
 
-    // 🔹 Listen for Updates (masking/grafana/queue_metrics)
-    db.ref("masking/grafana/queue_metrics").on("value", (snapshot) => {
-        const data = snapshot.val();
-        if (!data) return;
+    let currentData = null;
+    let searchQuery = "";
 
+    function renderTable() {
+        if (!currentData) return;
+        const body = document.getElementById('masking-table-body');
         let html = '';
-        const projects = Object.keys(data).filter(k => k !== '_lastUpdated');
         
-        projects.forEach(project => {
-            html += `<div class="project-card">
-                <div class="project-name">${project.toUpperCase()}</div>`;
+        const projects = Object.keys(currentData)
+            .filter(k => k !== '_lastUpdated')
+            .filter(k => k.toLowerCase().includes(searchQuery.toLowerCase()));
+
+        projects.forEach(p => {
+            const metrics = currentData[p];
+            const m = metrics["Masking"] || { total: 0, minuteDelta: 0 };
+            const e = metrics["Masking Engine"] || { total: 0, minuteDelta: 0 };
+
+            const mDeltaClass = m.minuteDelta > 0 ? 'up' : (m.minuteDelta < 0 ? 'down' : 'zero');
+            const mDeltaText = m.minuteDelta > 0 ? `+${m.minuteDelta}` : (m.minuteDelta === 0 ? '±0' : m.minuteDelta);
             
-            const metrics = data[project];
-            Object.keys(metrics).forEach(mName => {
-                const m = metrics[mName];
-                const deltaClass = m.minuteDelta > 0 ? 'delta-up' : (m.minuteDelta < 0 ? 'delta-down' : 'delta-zero');
-                const deltaText = m.minuteDelta > 0 ? `+${m.minuteDelta}` : (m.minuteDelta === 0 ? '±0' : m.minuteDelta);
-                
-                html += `
-                    <div class="metric-row">
-                        <span class="metric-name">${mName}</span>
-                        <span class="metric-value">${m.total}</span>
-                        <span class="metric-delta ${deltaClass}">${deltaText}</span>
-                    </div>
-                `;
-            });
-            html += `</div>`;
+            const eDeltaClass = e.minuteDelta > 0 ? 'up' : (e.minuteDelta < 0 ? 'down' : 'zero');
+            const eDeltaText = e.minuteDelta > 0 ? `+${e.minuteDelta}` : (e.minuteDelta === 0 ? '±0' : e.minuteDelta);
+
+            html += `
+                <tr>
+                    <td class="project-name">${p.toUpperCase()}</td>
+                    <td style="text-align:right">
+                        <span class="m-val">${m.total}</span><span class="m-delta ${mDeltaClass}">${mDeltaText}</span>
+                    </td>
+                    <td style="text-align:right">
+                        <span class="m-val">${e.total}</span><span class="m-delta ${eDeltaClass}">${eDeltaText}</span>
+                    </td>
+                </tr>
+            `;
         });
 
-        document.getElementById('masking-monitor-content').innerHTML = html;
-        document.getElementById('masking-last-updated').innerText = `Last Updated: ${new Date(data._lastUpdated).toLocaleTimeString()}`;
+        body.innerHTML = html || '<tr><td colspan="3" style="text-align:center; padding: 20px;">No matches found</td></tr>';
+    }
+
+    db.ref("masking/grafana/queue_metrics").on("value", (snapshot) => {
+        currentData = snapshot.val();
+        if (!currentData) return;
+        renderTable();
+        document.getElementById('masking-last-updated').innerText = `Updated: ${new Date(currentData._lastUpdated).toLocaleTimeString()}`;
     });
 
-    // 🔹 Interactivity (Minimize)
+    document.getElementById('masking-search').oninput = (e) => {
+        searchQuery = e.target.value;
+        renderTable();
+    };
+
     let minimized = false;
     document.getElementById('masking-minimize').onclick = () => {
         minimized = !minimized;
-        document.getElementById('masking-monitor-content').style.display = minimized ? 'none' : 'block';
+        document.getElementById('masking-table-container').style.display = minimized ? 'none' : 'block';
+        document.getElementById('masking-search-container').style.display = minimized ? 'none' : 'block';
         document.getElementById('masking-minimize').innerText = minimized ? '+' : '−';
     };
-
-    // 🔹 Make Draggable
-    let isDragging = false;
-    let currentX;
-    let currentY;
-    let initialX;
-    let initialY;
-    let xOffset = 0;
-    let yOffset = 0;
-
-    const dragItem = document.getElementById('masking-monitor-header');
-    dragItem.addEventListener("mousedown", dragStart);
-    document.addEventListener("mousemove", drag);
-    document.addEventListener("mouseup", dragEnd);
-
-    function dragStart(e) {
-        initialX = e.clientX - xOffset;
-        initialY = e.clientY - yOffset;
-        if (e.target === dragItem || dragItem.contains(e.target)) { isDragging = true; }
-    }
-    function drag(e) {
-        if (isDragging) {
-            e.preventDefault();
-            currentX = e.clientX - initialX;
-            currentY = e.clientY - initialY;
-            xOffset = currentX;
-            yOffset = currentY;
-            setTranslate(currentX, currentY, container);
-        }
-    }
-    function setTranslate(xPos, yPos, el) { el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)"; }
-    function dragEnd(e) { isDragging = false; }
 
 })();

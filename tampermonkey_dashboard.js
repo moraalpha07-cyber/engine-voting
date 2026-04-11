@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Trax Queue Real-Time Monitor
 // @namespace    http://tampermonkey.net/
-// @version      1.0
-// @description  Monitor Trax Queue metrics from Firebase with 1-minute deltas.
+// @version      2.0
+// @description  Monitor Trax Queue with table layout highlighting Voting Engine.
 // @author       Antigravity
 // @match        *://monitor.trax-cloud.com/*
 // @match        *://*.firebaseio.com/*
@@ -14,189 +14,155 @@
 (function() {
     'use strict';
 
-    // 🔴 SETTINGS - PASTE YOUR FIREBASE URL HERE
     const FIREBASE_DB_URL = "https://projectallow-default-rtdb.firebaseio.com/"; 
 
-    // 🔹 Initialize Firebase
     if (!firebase.apps.length) {
         firebase.initializeApp({ databaseURL: FIREBASE_DB_URL });
     }
     const db = firebase.database();
 
-    // 🔹 Styles
     GM_addStyle(`
         #trax-monitor {
             position: fixed;
             top: 20px;
             right: 20px;
-            width: 350px;
-            max-height: 80vh;
-            background: rgba(15, 15, 15, 0.85);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            width: 480px;
+            background: rgba(10, 15, 25, 0.9);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(0, 212, 255, 0.3);
             border-radius: 16px;
             color: #fff;
-            font-family: 'Inter', sans-serif;
+            font-family: 'Segoe UI', system-ui, sans-serif;
             z-index: 10000;
             display: flex;
             flex-direction: column;
-            box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+            box-shadow: 0 12px 40px rgba(0,0,0,0.6);
             overflow: hidden;
             transition: all 0.3s ease;
         }
         #trax-monitor-header {
-            padding: 15px;
-            background: rgba(255, 255, 255, 0.05);
+            padding: 12px 15px;
+            background: linear-gradient(90deg, transparent, rgba(0, 212, 255, 0.1));
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             display: flex;
             justify-content: space-between;
             align-items: center;
-            cursor: move;
         }
         #trax-monitor-header h3 {
             margin: 0;
-            font-size: 14px;
+            font-size: 13px;
             text-transform: uppercase;
-            letter-spacing: 1px;
+            letter-spacing: 1.5px;
             color: #00d4ff;
         }
-        #trax-monitor-content {
-            padding: 10px;
+        #trax-table-container {
+            max-height: 70vh;
             overflow-y: auto;
-            flex-grow: 1;
+            scrollbar-width: thin;
         }
-        .project-card {
-            margin-bottom: 15px;
-            background: rgba(255, 255, 255, 0.03);
-            border-radius: 8px;
-            padding: 10px;
-        }
-        .project-name {
-            font-weight: bold;
-            font-size: 13px;
-            margin-bottom: 8px;
-            color: #aaa;
-            border-left: 3px solid #00d4ff;
-            padding-left: 8px;
-        }
-        .metric-row {
-            display: flex;
-            justify-content: space-between;
+        table.trax-table {
+            width: 100%;
+            border-collapse: collapse;
             font-size: 12px;
-            padding: 4px 0;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
         }
-        .metric-name { width: 140px; }
-        .metric-value { font-weight: 600; text-align: right; width: 60px; }
-        .metric-delta { 
-            width: 60px; 
-            text-align: right; 
-            font-size: 11px;
-            padding: 1px 4px;
-            border-radius: 4px;
+        table.trax-table th {
+            position: sticky;
+            top: 0;
+            background: #0f172a;
+            padding: 10px;
+            text-align: left;
+            color: #64748b;
+            font-weight: 500;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            z-index: 1;
         }
-        .delta-up { color: #ff4d4d; background: rgba(255, 77, 77, 0.1); }
-        .delta-down { color: #00ff88; background: rgba(0, 255, 136, 0.1); }
-        .delta-zero { color: #666; }
-        .last-updated {
-            font-size: 10px;
-            text-align: center;
-            padding: 8px;
-            color: #555;
+        table.trax-table td {
+            padding: 8px 10px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.03);
         }
-        #trax-minimize {
-            cursor: pointer;
-            font-size: 18px;
-            padding: 0 5px;
-        }
+        .p-name { font-weight: 600; color: #cbd5e1; width: 160px; }
+        .v-val { font-weight: 700; text-align: right; font-family: monospace; font-size: 13px; color: #fff; }
+        .v-delta { font-size: 10px; padding: 2px 4px; border-radius: 4px; margin-left: 5px; min-width: 35px; display: inline-block; text-align: center; }
+        
+        .up { color: #ff4d4d; background: rgba(255, 77, 77, 0.15); }
+        .down { color: #00ff88; background: rgba(0, 255, 136, 0.15); }
+        .zero { color: #475569; background: rgba(255,255,255,0.05); }
+
+        .last-updated { font-size: 10px; text-align: center; padding: 10px; color: #475569; background: #020617; }
+        #trax-minimize { cursor: pointer; color: #475569; font-size: 18px; }
     `);
 
-    // 🔹 Create UI
     const container = document.createElement('div');
     container.id = 'trax-monitor';
     container.innerHTML = `
         <div id="trax-monitor-header">
-            <h3>Trax Queue Monitor</h3>
+            <h3>Trax Monitor</h3>
             <span id="trax-minimize">−</span>
         </div>
-        <div id="trax-monitor-content">
-            <div style="text-align:center; padding: 20px; color: #666;">Waiting for data...</div>
+        <div id="trax-table-container">
+            <table class="trax-table">
+                <thead>
+                    <tr>
+                        <th>PROJECT</th>
+                        <th style="text-align:right">TOTAL</th>
+                        <th style="text-align:right">VOTING ENGINE</th>
+                    </tr>
+                </thead>
+                <tbody id="trax-table-body">
+                    <tr><td colspan="3" style="text-align:center; padding: 20px; color: #475569;">Waiting for data...</td></tr>
+                </tbody>
+            </table>
         </div>
         <div class="last-updated" id="trax-last-updated">Never updated</div>
     `;
     document.body.appendChild(container);
 
-    // 🔹 Listen for Updates
     db.ref("trax/queue_metrics").on("value", (snapshot) => {
         const data = snapshot.val();
         if (!data) return;
 
+        const body = document.getElementById('trax-table-body');
         let html = '';
         const projects = Object.keys(data).filter(k => k !== '_lastUpdated');
         
-        projects.forEach(project => {
-            html += `<div class="project-card">
-                <div class="project-name">${project.toUpperCase()}</div>`;
+        projects.forEach(p => {
+            const metrics = data[p];
             
-            const metrics = data[project];
-            Object.keys(metrics).forEach(mName => {
-                const m = metrics[mName];
-                const deltaClass = m.minuteDelta > 0 ? 'delta-up' : (m.minuteDelta < 0 ? 'delta-down' : 'delta-zero');
-                const deltaText = m.minuteDelta > 0 ? `+${m.minuteDelta}` : (m.minuteDelta === 0 ? '±0' : m.minuteDelta);
-                
-                html += `
-                    <div class="metric-row">
-                        <span class="metric-name">${mName}</span>
-                        <span class="metric-value">${m.total}</span>
-                        <span class="metric-delta ${deltaClass}">${deltaText}</span>
-                    </div>
-                `;
-            });
-            html += `</div>`;
+            // Calculate pseudo-total if actual total isn't explicit, or use "Validation" as main if that's what's meant.
+            // Actually, we'll try to find any metric named "Total" or just the sum of main ones.
+            // But usually the user wants "Validation" or just a representative metric.
+            // I'll look for "Validation" for "TOTAL" column or sum.
+            const main = metrics["Validation"] || { total: 0, minuteDelta: 0 };
+            const voting = metrics["Voting Engine"] || { total: 0, minuteDelta: 0 };
+
+            const mDeltaClass = main.minuteDelta > 0 ? 'up' : (main.minuteDelta < 0 ? 'down' : 'zero');
+            const mDeltaText = main.minuteDelta > 0 ? `+${main.minuteDelta}` : (main.minuteDelta === 0 ? '±0' : main.minuteDelta);
+            
+            const vDeltaClass = voting.minuteDelta > 0 ? 'up' : (voting.minuteDelta < 0 ? 'down' : 'zero');
+            const vDeltaText = voting.minuteDelta > 0 ? `+${voting.minuteDelta}` : (voting.minuteDelta === 0 ? '±0' : voting.minuteDelta);
+
+            html += `
+                <tr>
+                    <td class="p-name">${p.toUpperCase()}</td>
+                    <td style="text-align:right">
+                        <span class="v-val">${main.total}</span><span class="v-delta ${mDeltaClass}">${mDeltaText}</span>
+                    </td>
+                    <td style="text-align:right">
+                        <span class="v-val">${voting.total}</span><span class="v-delta ${vDeltaClass}">${vDeltaText}</span>
+                    </td>
+                </tr>
+            `;
         });
 
-        document.getElementById('trax-monitor-content').innerHTML = html;
-        document.getElementById('trax-last-updated').innerText = `Last Updated: ${new Date(data._lastUpdated).toLocaleTimeString()}`;
+        body.innerHTML = html;
+        document.getElementById('trax-last-updated').innerText = `Updated: ${new Date(data._lastUpdated).toLocaleTimeString()}`;
     });
 
-    // 🔹 Interactivity (Minimize)
     let minimized = false;
     document.getElementById('trax-minimize').onclick = () => {
         minimized = !minimized;
-        document.getElementById('trax-monitor-content').style.display = minimized ? 'none' : 'block';
+        document.getElementById('trax-table-container').style.display = minimized ? 'none' : 'block';
         document.getElementById('trax-minimize').innerText = minimized ? '+' : '−';
     };
-
-    // 🔹 Make Draggable
-    let isDragging = false;
-    let currentX;
-    let currentY;
-    let initialX;
-    let initialY;
-    let xOffset = 0;
-    let yOffset = 0;
-
-    const dragItem = document.getElementById('trax-monitor-header');
-    dragItem.addEventListener("mousedown", dragStart);
-    document.addEventListener("mousemove", drag);
-    document.addEventListener("mouseup", dragEnd);
-
-    function dragStart(e) {
-        initialX = e.clientX - xOffset;
-        initialY = e.clientY - yOffset;
-        if (e.target === dragItem || dragItem.contains(e.target)) { isDragging = true; }
-    }
-    function drag(e) {
-        if (isDragging) {
-            e.preventDefault();
-            currentX = e.clientX - initialX;
-            currentY = e.clientY - initialY;
-            xOffset = currentX;
-            yOffset = currentY;
-            setTranslate(currentX, currentY, container);
-        }
-    }
-    function setTranslate(xPos, yPos, el) { el.style.transform = "translate3d(" + xPos + "px, " + yPos + "px, 0)"; }
-    function dragEnd(e) { isDragging = false; }
 
 })();
