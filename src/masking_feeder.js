@@ -43,26 +43,8 @@ const projects = [
 ];
 
 const metrics = [
-  { path: "validation",             name: "Validation" },
-  { path: "masking",                name: "Masking" },
-  { path: "voting",                 name: "Voting" },
-  { path: "stitching",              name: "Stitching" },
-  { path: "online_pricing",         name: "Online Pricing" },
-  { path: "offline_pricing",        name: "Offline Pricing" },
-  { path: "scene_recognition",      name: "Scene Recognitions" },
-  { path: "category_expert",        name: "Category Expert" },
-  { path: "offline_validation",     name: "Offline Validation" },
-  { path: "offline_voting",         name: "Offline Voting" },
-  { path: "offline_pricing_voting", name: "Offline Pricing Voting" },
-  { path: "voting_engine",          name: "Voting Engine" },
   { path: "masking_engine",         name: "Masking Engine" },
-  { path: "pricing_voting",         name: "Pricing Voting" },
-  { path: "special_masking",        name: "Special Masking" },
-  { path: "masking_menu_items",     name: "Masking Menu Items" },
-  { path: "masking_price_labels",   name: "Masking Labels" },
-  { path: "masking_brand_hunt",     name: "Masking Brand Hunt" },
-  { path: "category_expert_voting", name: "Expert Voting" },
-  { path: "offline_posm",           name: "Offline POSM" }
+  { path: "masking",                name: "Masking" }
 ];
 
 // 🔹 Fetch with timeout helper
