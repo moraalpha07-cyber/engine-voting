@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Voting Engine Real-Time Monitor
 // @namespace    http://tampermonkey.net/
-// @version      2.1
-// @description  Monitor Voting Engine with compact table layout, Hide Zero toggle, and Draggable interface.
+// @version      2.2
+// @description  Monitor Voting Engine with compact table layout, interactive sorting, Hide Zero toggle, and Draggable interface.
 // @author       Antigravity
 // @match        *://monitor.trax-cloud.com/*
 // @match        *://*.firebaseio.com/*
@@ -81,7 +81,6 @@
             max-height: 60vh;
             overflow-y: auto;
             scrollbar-width: thin;
-            scrollbar-color: rgba(0, 255, 136, 0.3) transparent;
         }
         table.voting-table {
             width: 100%;
@@ -99,7 +98,11 @@
             font-weight: 600;
             border-bottom: 1px solid rgba(255,255,255,0.1);
             z-index: 1;
+            cursor: pointer;
+            user-select: none;
         }
+        table.voting-table th:hover { color: #fff; background: #0c2b1a; }
+
         table.voting-table td {
             padding: 8px 10px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.03);
@@ -134,8 +137,8 @@
             <table class="voting-table">
                 <thead>
                     <tr>
-                        <th class="p-name">PROJECT</th>
-                        <th class="v-col" style="text-align:right">VALUE</th>
+                        <th class="p-name" data-sort="name">PROJECT <span></span></th>
+                        <th class="v-col" style="text-align:right" data-sort="total">VALUE <span id="vt-sort">▼</span></th>
                     </tr>
                 </thead>
                 <tbody id="voting-table-body">
@@ -148,28 +151,40 @@
     document.body.appendChild(container);
 
     let hideZero = false, cachedData = null;
+    let sortConfig = { key: 'total', direction: 'desc' };
 
     function renderTable() {
         if (!cachedData) return;
         const body = document.getElementById('voting-table-body');
         let html = '';
-        const projects = Object.keys(cachedData).filter(k => k !== '_lastUpdated');
+        const projectKeys = Object.keys(cachedData).filter(k => k !== '_lastUpdated');
         
-        let visibleCount = 0;
-        projects.forEach(p => {
+        const list = projectKeys.map(p => {
             const metrics = cachedData[p];
             const mKey = Object.keys(metrics)[0];
             const m = metrics[mKey] || { total: 0, minuteDelta: 0 };
+            return { name: p, total: m.total, delta: m.minuteDelta, mData: m };
+        });
 
-            if (hideZero && m.total === 0) return;
+        list.sort((a, b) => {
+            let valA = a[sortConfig.key];
+            let valB = b[sortConfig.key];
+            if (sortConfig.direction === 'asc') return valA > valB ? 1 : -1;
+            return valA < valB ? 1 : -1;
+        });
+
+        let visibleCount = 0;
+        list.forEach(item => {
+            if (hideZero && item.total === 0) return;
             visibleCount++;
 
+            const m = item.mData;
             const deltaClass = m.minuteDelta > 0 ? 'up' : (m.minuteDelta < 0 ? 'down' : 'zero');
             const deltaText = m.minuteDelta > 0 ? `+${m.minuteDelta}` : (m.minuteDelta === 0 ? '±0' : m.minuteDelta);
 
             html += `
                 <tr>
-                    <td class="p-name">${p.toUpperCase()}</td>
+                    <td class="p-name">${item.name.toUpperCase()}</td>
                     <td class="v-col" style="text-align:right">
                         <span class="v-val">${m.total}</span><span class="v-delta ${deltaClass}">${deltaText}</span>
                     </td>
@@ -177,13 +192,31 @@
             `;
         });
 
-        body.innerHTML = html || '<tr><td colspan="2" style="text-align:center; padding: 20px;">All filtered results are 0</td></tr>';
+        body.innerHTML = html || '<tr><td colspan="2" style="text-align:center; padding: 20px;">No results found</td></tr>';
         document.getElementById('voting-last-updated').innerText = `Updated: ${new Date(cachedData._lastUpdated).toLocaleTimeString()}`;
     }
 
     db.ref("engine-voting/grafana/queue_metrics").on("value", (snapshot) => {
         cachedData = snapshot.val();
         renderTable();
+    });
+
+    // 🔹 Sort Interaction
+    document.querySelectorAll('#voting-monitor th[data-sort]').forEach(th => {
+        th.onclick = () => {
+            const key = th.getAttribute('data-sort');
+            if (sortConfig.key === key) {
+                sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortConfig.key = key;
+                sortConfig.direction = 'desc';
+            }
+
+            document.querySelectorAll('#voting-monitor th span').forEach(s => s.innerText = '');
+            const icon = sortConfig.direction === 'asc' ? '▲' : '▼';
+            th.querySelector('span').innerText = icon;
+            renderTable();
+        };
     });
 
     document.getElementById('voting-hide-zero').onclick = (e) => {
@@ -202,7 +235,6 @@
     // 🔹 DRAGGABLE LOGIC
     let isDragging = false, currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
     const dragItem = document.getElementById('voting-monitor-header');
-    
     dragItem.addEventListener("mousedown", dragStart);
     document.addEventListener("mousemove", drag);
     document.addEventListener("mouseup", dragEnd);

@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Masking Queue Real-Time Monitor
 // @namespace    http://tampermonkey.net/
-// @version      2.1
-// @description  Monitor Masking Queue with table layout, search, Hide Zero toggle, and Draggable interface.
+// @version      2.2
+// @description  Monitor Masking Queue with table layout, interactive sorting, search, Hide Zero toggle, and Draggable interface.
 // @author       Antigravity
 // @match        *://monitor.trax-cloud.com/*
 // @match        *://*.firebaseio.com/*
@@ -98,7 +98,6 @@
             max-height: 60vh;
             overflow-y: auto;
             scrollbar-width: thin;
-            scrollbar-color: rgba(255, 100, 0, 0.3) transparent;
         }
         table.masking-table {
             width: 100%;
@@ -116,7 +115,11 @@
             font-weight: 600;
             border-bottom: 1px solid rgba(255,255,255,0.1);
             z-index: 1;
+            cursor: pointer;
+            user-select: none;
         }
+        table.masking-table th:hover { color: #fff; background: #2a2a2a; }
+        
         table.masking-table td {
             padding: 8px 10px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.03);
@@ -154,9 +157,9 @@
             <table class="masking-table">
                 <thead>
                     <tr>
-                        <th class="p-name">PROJECT</th>
-                        <th class="m-col" style="text-align:right">MASKING</th>
-                        <th class="m-col" style="text-align:right">ENGINE</th>
+                        <th class="p-name" data-sort="name">PROJECT <span></span></th>
+                        <th class="m-col" style="text-align:right" data-sort="masking">MASKING <span id="mask-sort">▼</span></th>
+                        <th class="m-col" style="text-align:right" data-sort="engine">ENGINE <span></span></th>
                     </tr>
                 </thead>
                 <tbody id="masking-table-body">
@@ -169,24 +172,41 @@
     document.body.appendChild(container);
 
     let currentData = null, searchQuery = "", hideZero = false;
+    let sortConfig = { key: 'masking', direction: 'desc' }; // Default sort by masking count descending
 
     function renderTable() {
         if (!currentData) return;
         const body = document.getElementById('masking-table-body');
         let html = '';
         
-        const projects = Object.keys(currentData)
-            .filter(k => k !== '_lastUpdated')
-            .filter(k => k.toLowerCase().includes(searchQuery.toLowerCase()));
+        const projectKeys = Object.keys(currentData).filter(k => k !== '_lastUpdated');
 
-        let visibleCount = 0;
-        projects.forEach(p => {
+        // Prepare list for sorting
+        const list = projectKeys.map(p => {
             const metrics = currentData[p];
             const m = metrics["Masking"] || { total: 0, minuteDelta: 0 };
             const e = metrics["Masking Engine"] || { total: 0, minuteDelta: 0 };
+            return { name: p, masking: m.total, engine: e.total, mData: m, eData: e };
+        });
 
-            if (hideZero && m.total === 0 && e.total === 0) return;
+        // Apply Search
+        const filteredList = list.filter(item => item.name.toLowerCase().includes(searchQuery.toLowerCase()));
+
+        // Apply Sort
+        filteredList.sort((a, b) => {
+            let valA = a[sortConfig.key];
+            let valB = b[sortConfig.key];
+            if (sortConfig.direction === 'asc') return valA > valB ? 1 : -1;
+            return valA < valB ? 1 : -1;
+        });
+
+        let visibleCount = 0;
+        filteredList.forEach(item => {
+            if (hideZero && item.masking === 0 && item.engine === 0) return;
             visibleCount++;
+
+            const m = item.mData;
+            const e = item.eData;
 
             const mDeltaClass = m.minuteDelta > 0 ? 'up' : (m.minuteDelta < 0 ? 'down' : 'zero');
             const mDeltaText = m.minuteDelta > 0 ? `+${m.minuteDelta}` : (m.minuteDelta === 0 ? '±0' : m.minuteDelta);
@@ -195,7 +215,7 @@
 
             html += `
                 <tr>
-                    <td class="p-name">${p.toUpperCase()}</td>
+                    <td class="p-name">${item.name.toUpperCase()}</td>
                     <td class="m-col" style="text-align:right">
                         <span class="m-val">${m.total}</span><span class="m-delta ${mDeltaClass}">${mDeltaText}</span>
                     </td>
@@ -206,7 +226,7 @@
             `;
         });
 
-        body.innerHTML = html || (hideZero ? '<tr><td colspan="3" style="text-align:center; padding: 20px;">All filtered queues are 0</td></tr>' : '<tr><td colspan="3" style="text-align:center; padding: 20px;">No matches found</td></tr>');
+        body.innerHTML = html || (hideZero ? '<tr><td colspan="3" style="text-align:center; padding: 20px;">All results are 0</td></tr>' : '<tr><td colspan="3" style="text-align:center; padding: 20px;">No matches found</td></tr>');
     }
 
     db.ref("masking/grafana/queue_metrics").on("value", (snapshot) => {
@@ -214,6 +234,24 @@
         if (!currentData) return;
         renderTable();
         document.getElementById('masking-last-updated').innerText = `Updated: ${new Date(currentData._lastUpdated).toLocaleTimeString()}`;
+    });
+
+    // 🔹 Sort Interaction
+    document.querySelectorAll('#masking-monitor th[data-sort]').forEach(th => {
+        th.onclick = () => {
+            const key = th.getAttribute('data-sort');
+            if (sortConfig.key === key) {
+                sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortConfig.key = key;
+                sortConfig.direction = 'desc';
+            }
+
+            document.querySelectorAll('#masking-monitor th span').forEach(s => s.innerText = '');
+            const icon = sortConfig.direction === 'asc' ? '▲' : '▼';
+            th.querySelector('span').innerText = icon;
+            renderTable();
+        };
     });
 
     document.getElementById('masking-search').oninput = (e) => {
@@ -238,7 +276,6 @@
     // 🔹 DRAGGABLE LOGIC
     let isDragging = false, currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
     const dragItem = document.getElementById('masking-monitor-header');
-    
     dragItem.addEventListener("mousedown", dragStart);
     document.addEventListener("mousemove", drag);
     document.addEventListener("mouseup", dragEnd);

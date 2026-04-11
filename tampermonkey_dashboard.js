@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Trax Queue Real-Time Monitor
 // @namespace    http://tampermonkey.net/
-// @version      2.2
-// @description  Monitor Trax Queue with table layout, Hide Zero toggle, and Draggable interface.
+// @version      2.3
+// @description  Monitor Trax Queue with table layout, interactive sorting, Hide Zero toggle, and Draggable interface.
 // @author       Antigravity
 // @match        *://monitor.trax-cloud.com/*
 // @match        *://*.firebaseio.com/*
@@ -98,7 +98,12 @@
             font-weight: 600;
             border-bottom: 1px solid rgba(255,255,255,0.1);
             z-index: 1;
+            cursor: pointer;
+            user-select: none;
         }
+        table.trax-table th:hover { color: #fff; background: #1e293b; }
+        table.trax-table th.active-sort { color: #00d4ff; }
+
         table.trax-table td {
             padding: 8px 10px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.03);
@@ -133,8 +138,8 @@
             <table class="trax-table">
                 <thead>
                     <tr>
-                        <th class="p-name">PROJECT</th>
-                        <th class="v-col" style="text-align:right">TOTAL</th>
+                        <th class="p-name" data-sort="name">PROJECT <span></span></th>
+                        <th class="v-col" style="text-align:right" data-sort="total">TOTAL <span id="trax-sort-icon">▼</span></th>
                     </tr>
                 </thead>
                 <tbody id="trax-table-body">
@@ -148,29 +153,48 @@
 
     let hideZero = false;
     let cachedData = null;
+    let sortConfig = { key: 'total', direction: 'desc' }; // Default sort by value descending
 
     function renderTable() {
         if (!cachedData) return;
         const body = document.getElementById('trax-table-body');
         let html = '';
-        const projects = Object.keys(cachedData).filter(k => k !== '_lastUpdated');
         
-        let visibleCount = 0;
-        projects.forEach(p => {
+        const projectKeys = Object.keys(cachedData).filter(k => k !== '_lastUpdated');
+        
+        // Prepare list for sorting
+        const list = projectKeys.map(p => {
             const metrics = cachedData[p];
             const main = metrics["Validation"] || { total: 0, minuteDelta: 0 };
+            return { name: p, total: main.total, delta: main.minuteDelta, fullData: main };
+        });
 
-            if (hideZero && main.total === 0) return;
+        // Apply Sorting
+        list.sort((a, b) => {
+            let valA = sortConfig.key === 'name' ? a.name : a.total;
+            let valB = sortConfig.key === 'name' ? b.name : b.total;
+
+            if (sortConfig.direction === 'asc') {
+                return valA > valB ? 1 : -1;
+            } else {
+                return valA < valB ? 1 : -1;
+            }
+        });
+
+        let visibleCount = 0;
+        list.forEach(item => {
+            if (hideZero && item.total === 0) return;
             visibleCount++;
 
+            const main = item.fullData;
             const mDeltaClass = main.minuteDelta > 0 ? 'up' : (main.minuteDelta < 0 ? 'down' : 'zero');
             const mDeltaText = main.minuteDelta > 0 ? `+${main.minuteDelta}` : (main.minuteDelta === 0 ? '±0' : main.minuteDelta);
 
             html += `
                 <tr>
-                    <td class="p-name">${p.toUpperCase()}</td>
+                    <td class="p-name">${item.name.toUpperCase()}</td>
                     <td class="v-col" style="text-align:right">
-                        <span class="v-val">${main.total}</span><span class="v-delta ${mDeltaClass}">${mDeltaText}</span>
+                        <span class="v-val">${item.total}</span><span class="v-delta ${mDeltaClass}">${mDeltaText}</span>
                     </td>
                 </tr>
             `;
@@ -187,6 +211,26 @@
     db.ref("trax/queue_metrics").on("value", (snapshot) => {
         cachedData = snapshot.val();
         renderTable();
+    });
+
+    // 🔹 Sort Interaction
+    document.querySelectorAll('#trax-monitor th[data-sort]').forEach(th => {
+        th.onclick = () => {
+            const key = th.getAttribute('data-sort');
+            if (sortConfig.key === key) {
+                sortConfig.direction = sortConfig.direction === 'asc' ? 'desc' : 'asc';
+            } else {
+                sortConfig.key = key;
+                sortConfig.direction = 'desc';
+            }
+
+            // Update UI
+            document.querySelectorAll('#trax-monitor th span').forEach(s => s.innerText = '');
+            const icon = sortConfig.direction === 'asc' ? '▲' : '▼';
+            th.querySelector('span').innerText = icon;
+            
+            renderTable();
+        };
     });
 
     document.getElementById('trax-hide-zero').onclick = (e) => {
