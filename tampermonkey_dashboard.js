@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Trax Queue Real-Time Monitor
 // @namespace    http://tampermonkey.net/
-// @version      2.1
-// @description  Monitor Trax Queue with table layout and Hide Zero toggle.
+// @version      2.2
+// @description  Monitor Trax Queue with table layout, Hide Zero toggle, and Draggable interface.
 // @author       Antigravity
 // @match        *://monitor.trax-cloud.com/*
 // @match        *://*.firebaseio.com/*
@@ -32,13 +32,13 @@
             border: 1px solid rgba(0, 212, 255, 0.3);
             border-radius: 16px;
             color: #fff;
-            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            font-family: 'Segoe UI', system-ui, sans-serif;
             z-index: 10000;
             display: flex;
             flex-direction: column;
             box-shadow: 0 12px 40px rgba(0,0,0,0.6);
             overflow: hidden;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            transition: opacity 0.3s;
         }
         #trax-monitor-header {
             padding: 12px 15px;
@@ -47,6 +47,7 @@
             display: flex;
             justify-content: space-between;
             align-items: center;
+            cursor: move;
         }
         #trax-monitor-header h3 {
             margin: 0;
@@ -54,6 +55,7 @@
             text-transform: uppercase;
             letter-spacing: 1.5px;
             color: #00d4ff;
+            pointer-events: none;
         }
         .header-actions {
             display: flex;
@@ -79,7 +81,6 @@
             max-height: 70vh;
             overflow-y: auto;
             scrollbar-width: thin;
-            scrollbar-color: rgba(0, 212, 255, 0.3) transparent;
         }
         table.trax-table {
             width: 100%;
@@ -107,16 +108,15 @@
         }
         .p-name { font-weight: 600; color: #cbd5e1; width: 60%; }
         .v-col { text-align: right; width: 40%; }
-        .v-val { font-weight: 700; font-family: 'Roboto Mono', monospace; font-size: 13px; color: #fff; }
+        .v-val { font-weight: 700; font-family: monospace; font-size: 13px; color: #fff; }
         .v-delta { font-size: 10px; padding: 2px 5px; border-radius: 4px; margin-left: 6px; min-width: 35px; display: inline-block; text-align: center; }
         
         .up { color: #ff4d4d; background: rgba(255, 77, 77, 0.15); }
         .down { color: #00ff88; background: rgba(0, 255, 136, 0.15); }
         .zero { color: #475569; background: rgba(255,255,255,0.05); }
 
-        .last-updated { font-size: 10px; text-align: center; padding: 10px; color: #475569; background: #020617; border-top: 1px solid rgba(255,255,255,0.05); }
-        #trax-minimize { cursor: pointer; color: #475569; font-size: 18px; transition: color 0.2s; }
-        #trax-minimize:hover { color: #fff; }
+        .last-updated { font-size: 10px; text-align: center; padding: 10px; color: #475569; background: #020617; }
+        #trax-minimize { cursor: pointer; color: #475569; font-size: 18px; }
     `);
 
     const container = document.createElement('div');
@@ -177,7 +177,7 @@
         });
 
         if (visibleCount === 0 && hideZero) {
-            html = '<tr><td colspan="2" style="text-align:center; padding: 20px; color: #475569;">All current queues are 0</td></tr>';
+            html = '<tr><td colspan="2" style="text-align:center; padding: 20px; color: #475569;">All queues are 0</td></tr>';
         }
 
         body.innerHTML = html;
@@ -189,20 +189,42 @@
         renderTable();
     });
 
-    // 🔹 Toggle Zero Logic
     document.getElementById('trax-hide-zero').onclick = (e) => {
         hideZero = !hideZero;
         e.target.classList.toggle('active', hideZero);
         renderTable();
     };
 
-    // 🔹 Minimize Logic
     let minimized = false;
     document.getElementById('trax-minimize').onclick = () => {
         minimized = !minimized;
         document.getElementById('trax-table-container').style.display = minimized ? 'none' : 'block';
         document.getElementById('trax-minimize').innerText = minimized ? '+' : '−';
-        container.style.height = minimized ? 'auto' : '';
     };
+
+    // 🔹 DRAGGABLE LOGIC
+    let isDragging = false, currentX, currentY, initialX, initialY, xOffset = 0, yOffset = 0;
+    const dragItem = document.getElementById('trax-monitor-header');
+    
+    dragItem.addEventListener("mousedown", dragStart);
+    document.addEventListener("mousemove", drag);
+    document.addEventListener("mouseup", dragEnd);
+
+    function dragStart(e) {
+        initialX = e.clientX - xOffset;
+        initialY = e.clientY - yOffset;
+        if (e.target === dragItem || dragItem.contains(e.target)) isDragging = true;
+    }
+    function drag(e) {
+        if (isDragging) {
+            e.preventDefault();
+            currentX = e.clientX - initialX;
+            currentY = e.clientY - initialY;
+            xOffset = currentX;
+            yOffset = currentY;
+            container.style.transform = `translate3d(${currentX}px, ${currentY}px, 0)`;
+        }
+    }
+    function dragEnd() { isDragging = false; }
 
 })();
