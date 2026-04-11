@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "main": "src/fetchAndFeed.js",
   "scripts": {
-    "start": "node src/fetchAndFeed.js"
+    "start": "node src/fetchAndFeed.js",
+    "start-masking": "node src/masking_feeder.js"
   },
   "dependencies": {
     "firebase-admin": "^11.11.0",
