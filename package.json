@@ -4,7 +4,8 @@
   "main": "src/fetchAndFeed.js",
   "scripts": {
     "start": "node src/fetchAndFeed.js",
-    "start-masking": "node src/masking_feeder.js"
+    "start-masking": "node src/masking_feeder.js",
+    "start-voting": "node src/voting_feeder.js"
   },
   "dependencies": {
     "firebase-admin": "^11.11.0",
