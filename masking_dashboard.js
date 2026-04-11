@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Masking Queue Real-Time Monitor
 // @namespace    http://tampermonkey.net/
-// @version      2.2
-// @description  Monitor Masking Queue with table layout, interactive sorting, search, Hide Zero toggle, and Draggable interface.
+// @version      2.3
+// @description  Monitor Masking Queue with table layout, delta sorting, search, Hide Zero/0-Diff toggles, and Draggable interface.
 // @author       Antigravity
 // @match        *://monitor.trax-cloud.com/*
 // @match        *://*.firebaseio.com/*
@@ -26,7 +26,7 @@
             position: fixed;
             top: 20px;
             left: 20px;
-            width: 480px;
+            width: 520px;
             background: rgba(10, 10, 10, 0.95);
             backdrop-filter: blur(15px);
             border: 1px solid rgba(255, 100, 0, 0.3);
@@ -59,15 +59,15 @@
         }
         .header-actions {
             display: flex;
-            gap: 12px;
+            gap: 8px;
             align-items: center;
         }
         .toggle-btn {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 100, 0, 0.2);
             color: #ff9f43;
-            font-size: 10px;
-            padding: 4px 8px;
+            font-size: 9px;
+            padding: 3px 6px;
             border-radius: 4px;
             cursor: pointer;
             text-transform: uppercase;
@@ -127,8 +127,8 @@
             overflow: hidden;
             text-overflow: ellipsis;
         }
-        .p-name { font-weight: 600; color: #ddd; width: 40%; }
-        .m-col { text-align: right; width: 30%; }
+        .p-name { font-weight: 600; color: #ddd; width: 35%; }
+        .m-col { text-align: right; width: 32.5%; }
         .m-val { font-weight: 700; font-family: monospace; font-size: 13px; }
         .m-delta { font-size: 10px; padding: 2px 4px; border-radius: 4px; margin-left: 5px; min-width: 35px; display: inline-block; text-align: center; }
         
@@ -137,7 +137,7 @@
         .zero { color: #555; background: rgba(255,255,255,0.05); }
 
         .last-updated { font-size: 10px; text-align: center; padding: 10px; color: #555; background: #0a0a0a; }
-        #masking-minimize { cursor: pointer; color: #888; font-size: 18px; }
+        #masking-minimize { cursor: pointer; color: #888; font-size: 18px; margin-left: 5px; }
     `);
 
     const container = document.createElement('div');
@@ -147,6 +147,7 @@
             <h3>Masking Monitor</h3>
             <div class="header-actions">
                 <button id="masking-hide-zero" class="toggle-btn">Hide Zero</button>
+                <button id="masking-hide-diff" class="toggle-btn">Hide 0 Diff</button>
                 <span id="masking-minimize">−</span>
             </div>
         </div>
@@ -158,8 +159,8 @@
                 <thead>
                     <tr>
                         <th class="p-name" data-sort="name">PROJECT <span></span></th>
-                        <th class="m-col" style="text-align:right" data-sort="masking">MASKING <span id="mask-sort">▼</span></th>
-                        <th class="m-col" style="text-align:right" data-sort="engine">ENGINE <span></span></th>
+                        <th class="m-col" style="text-align:right" data-sort="mDelta">MASKING <span id="mask-sort">▼</span></th>
+                        <th class="m-col" style="text-align:right" data-sort="eDelta">ENGINE <span></span></th>
                     </tr>
                 </thead>
                 <tbody id="masking-table-body">
@@ -171,8 +172,8 @@
     `;
     document.body.appendChild(container);
 
-    let currentData = null, searchQuery = "", hideZero = false;
-    let sortConfig = { key: 'masking', direction: 'desc' }; // Default sort by masking count descending
+    let currentData = null, searchQuery = "", hideZero = false, hideZeroDiff = false;
+    let sortConfig = { key: 'mDelta', direction: 'desc' }; // Default sort by masking delta descending
 
     function renderTable() {
         if (!currentData) return;
@@ -186,7 +187,15 @@
             const metrics = currentData[p];
             const m = metrics["Masking"] || { total: 0, minuteDelta: 0 };
             const e = metrics["Masking Engine"] || { total: 0, minuteDelta: 0 };
-            return { name: p, masking: m.total, engine: e.total, mData: m, eData: e };
+            return { 
+                name: p, 
+                masking: m.total, 
+                engine: e.total,
+                mDelta: m.minuteDelta,
+                eDelta: e.minuteDelta,
+                mData: m, 
+                eData: e 
+            };
         });
 
         // Apply Search
@@ -202,7 +211,11 @@
 
         let visibleCount = 0;
         filteredList.forEach(item => {
+            // Filter: Hide Zero (Totals)
             if (hideZero && item.masking === 0 && item.engine === 0) return;
+            // Filter: Hide 0 Diff (Deltas)
+            if (hideZeroDiff && item.mDelta === 0 && item.eDelta === 0) return;
+
             visibleCount++;
 
             const m = item.mData;
@@ -226,7 +239,7 @@
             `;
         });
 
-        body.innerHTML = html || (hideZero ? '<tr><td colspan="3" style="text-align:center; padding: 20px;">All results are 0</td></tr>' : '<tr><td colspan="3" style="text-align:center; padding: 20px;">No matches found</td></tr>');
+        body.innerHTML = html || '<tr><td colspan="3" style="text-align:center; padding: 20px;">No visible matching projects</td></tr>';
     }
 
     db.ref("masking/grafana/queue_metrics").on("value", (snapshot) => {
@@ -262,6 +275,12 @@
     document.getElementById('masking-hide-zero').onclick = (e) => {
         hideZero = !hideZero;
         e.target.classList.toggle('active', hideZero);
+        renderTable();
+    };
+
+    document.getElementById('masking-hide-diff').onclick = (e) => {
+        hideZeroDiff = !hideZeroDiff;
+        e.target.classList.toggle('active', hideZeroDiff);
         renderTable();
     };
 
