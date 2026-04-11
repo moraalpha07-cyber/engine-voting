@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         Masking Queue Real-Time Monitor
 // @namespace    http://tampermonkey.net/
-// @version      2.3
-// @description  Monitor Masking Queue with table layout, delta sorting, search, Hide Zero/0-Diff toggles, and Draggable interface.
+// @version      2.4
+// @description  Monitor Masking Queue with improved table layout (Engine first), delta sorting, search, and Hide Zero/0-Diff toggles.
 // @author       Antigravity
 // @match        *://monitor.trax-cloud.com/*
 // @match        *://*.firebaseio.com/*
@@ -98,6 +98,7 @@
             max-height: 60vh;
             overflow-y: auto;
             scrollbar-width: thin;
+            scrollbar-color: rgba(255, 100, 0, 0.3) transparent;
         }
         table.masking-table {
             width: 100%;
@@ -159,8 +160,8 @@
                 <thead>
                     <tr>
                         <th class="p-name" data-sort="name">PROJECT <span></span></th>
-                        <th class="m-col" style="text-align:right" data-sort="mDelta">MASKING <span id="mask-sort">▼</span></th>
-                        <th class="m-col" style="text-align:right" data-sort="eDelta">ENGINE <span></span></th>
+                        <th class="m-col" style="text-align:right" data-sort="eDelta">ENGINE <span id="mask-sort">▼</span></th>
+                        <th class="m-col" style="text-align:right" data-sort="mDelta">MASKING <span></span></th>
                     </tr>
                 </thead>
                 <tbody id="masking-table-body">
@@ -173,7 +174,7 @@
     document.body.appendChild(container);
 
     let currentData = null, searchQuery = "", hideZero = false, hideZeroDiff = false;
-    let sortConfig = { key: 'mDelta', direction: 'desc' }; // Default sort by masking delta descending
+    let sortConfig = { key: 'eDelta', direction: 'desc' }; // Default sort by Engine Delta descending
 
     function renderTable() {
         if (!currentData) return;
@@ -211,9 +212,7 @@
 
         let visibleCount = 0;
         filteredList.forEach(item => {
-            // Filter: Hide Zero (Totals)
             if (hideZero && item.masking === 0 && item.engine === 0) return;
-            // Filter: Hide 0 Diff (Deltas)
             if (hideZeroDiff && item.mDelta === 0 && item.eDelta === 0) return;
 
             visibleCount++;
@@ -230,10 +229,10 @@
                 <tr>
                     <td class="p-name">${item.name.toUpperCase()}</td>
                     <td class="m-col" style="text-align:right">
-                        <span class="m-val">${m.total}</span><span class="m-delta ${mDeltaClass}">${mDeltaText}</span>
+                        <span class="m-val">${e.total}</span><span class="m-delta ${eDeltaClass}">${eDeltaText}</span>
                     </td>
                     <td class="m-col" style="text-align:right">
-                        <span class="m-val">${e.total}</span><span class="m-delta ${eDeltaClass}">${eDeltaText}</span>
+                        <span class="m-val">${m.total}</span><span class="m-delta ${mDeltaClass}">${mDeltaText}</span>
                     </td>
                 </tr>
             `;
