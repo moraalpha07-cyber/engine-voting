@@ -146,7 +146,6 @@
                 
                 html += `
                     <div class="metric-row">
-                        <span class="metric-name">${mName}</span>
                         <span class="metric-value">${m.total}</span>
                         <span class="metric-delta ${deltaClass}">${deltaText}</span>
                     </div>
