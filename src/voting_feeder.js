@@ -7,6 +7,10 @@ const DATABASE_URL = process.env.FIREBASE_DATABASE_URL || "https://projectallow-
 const GRAFANA_URL = "https://monitor.trax-cloud.com/api/datasources/proxy/29/render";
 const SESSION_ID = process.env.GRAFANA_SESSION_ID;
 
+// 🔹 Telegram Config
+const TELEGRAM_BOT_TOKEN = "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
+const TELEGRAM_CHAT_ID = "@MONDELEZSE";
+
 // 🔹 Validate Secrets
 if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
   console.error("❌ ERROR: FIREBASE_SERVICE_ACCOUNT is missing!");
@@ -36,210 +40,120 @@ if (!admin.apps.length) {
 const db = admin.database();
 
 const projects = [
-  "pepsicouk",
-  "ulpt",
-  "dlcpt",
-  "bdftr",
-  "mdlzrusf",
-  "marspl",
-  "mondelezde",
-  "mondelezno",
-  "mondelezkaza",
-  "jtihr",
-  "pngza2",
-  "beiersdorfuk",
-  "mondelezsa",
-  "beiersdorfsp",
-  "jdetr",
-  "ulbe",
-  "diageotz",
-  "beiersdorfru",
-  "marssa",
-  "diageoie",
-  "beiersdorfng",
-  "marsbh",
-  "marskw",
-  "marsom",
-  "marsqa",
-  "mondelezse",
-  "marsuae",
-  "beiersdorfgr",
-  "diageoes",
-  "mondelezza"
+  "pepsicouk", "ulpt", "dlcpt", "bdftr", "mdlzrusf", "marspl", "mondelezde", "mondelezno", "mondelezkaza", "jtihr", "pngza2", "beiersdorfuk", "mondelezsa", "beiersdorfsp", "jdetr", "ulbe", "diageotz", "beiersdorfru", "marssa", "diageoie", "beiersdorfng", "marsbh", "marskw", "marsom", "marsqa", "mondelezse", "marsuae", "beiersdorfgr", "diageoes", "mondelezza"
 ];
 
 const metrics = [
   { path: "voting_engine", name: "Voting Engine" }
 ];
 
-// 🔹 Fetch with timeout helper
-function fetchWithTimeout(url, options, timeoutMs = 8000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal })
-    .finally(() => clearTimeout(timer));
+// 🔹 Telegram Helper
+async function sendTelegram(message) {
+  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${encodeURIComponent(message)}`;
+  try {
+    const res = await fetch(url);
+    if (!res.ok) console.error("❌ Telegram failed:", await res.text());
+    else console.log("✅ Telegram message sent.");
+  } catch (err) {
+    console.error("❌ Telegram error:", err.message);
+  }
 }
 
-// 🔹 Fetch one project
+// 🔹 Fetch helper
 async function fetchProject(project) {
   const payloadParts = [];
   metrics.forEach(m => {
-    payloadParts.push(
-      `target=alias(prod.gauges.selector.queue.${m.path}.${project}.total,'${m.name} - Total')`
-    );
-    payloadParts.push(
-      `target=alias(aliasByNode(prod.gauges.selector.queue.${m.path}.${project}.oldestTask,4),'${m.name} - Oldest Task')`
-    );
+    payloadParts.push(`target=alias(prod.gauges.selector.queue.${m.path}.${project}.total,'${m.name} - Total')`);
+    payloadParts.push(`target=alias(aliasByNode(prod.gauges.selector.queue.${m.path}.${project}.oldestTask,4),'${m.name} - Oldest Task')`);
   });
   const payload = payloadParts.join("&") + "&from=-1h&until=now&format=json";
 
-  const response = await fetchWithTimeout(GRAFANA_URL, {
-    method: "POST",
-    headers: {
-      "Cookie": `grafana_session=${SESSION_ID}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: payload
-  }, 8000);
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`❌ Error ${project}: ${response.status} - ${errorText.substring(0, 100)}`);
-    return null;
-  }
-
-  const json = await response.json();
-
-  const groupedData = {};
-  json.forEach(series => {
-    const lastValidPoint = series.datapoints
-      .filter(dp => dp[0] !== null)
-      .pop();
-    if (lastValidPoint) {
-      const timestamp = lastValidPoint[1] * 1000;
-      const value = lastValidPoint[0];
-      const isOldestTask = series.target.includes("Oldest Task");
-      const metricName = series.target
-        .replace(" - Total", "")
-        .replace(" - Oldest Task", "");
-
-      if (!groupedData[metricName]) {
-        groupedData[metricName] = {
-          lastUpdated: timestamp,
-          total: null,
-          oldestTask: null
-        };
+  try {
+    const response = await fetch(GRAFANA_URL, {
+      method: "POST",
+      headers: {
+        "Cookie": `grafana_session=${SESSION_ID}`,
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: payload
+    });
+    if (!response.ok) return null;
+    const json = await response.json();
+    const groupedData = {};
+    json.forEach(series => {
+      const lastValidPoint = series.datapoints.filter(dp => dp[0] !== null).pop();
+      if (lastValidPoint) {
+        const timestamp = lastValidPoint[1] * 1000;
+        const value = lastValidPoint[0];
+        const isOldestTask = series.target.includes("Oldest Task");
+        const metricName = series.target.replace(" - Total", "").replace(" - Oldest Task", "");
+        if (!groupedData[metricName]) groupedData[metricName] = { lastUpdated: timestamp, total: null, oldestTask: null };
+        if (isOldestTask) groupedData[metricName].oldestTask = value;
+        else { groupedData[metricName].total = value; groupedData[metricName].lastUpdated = timestamp; }
       }
-      if (isOldestTask) {
-        groupedData[metricName].oldestTask = value;
-      } else {
-        groupedData[metricName].total = value;
-        groupedData[metricName].lastUpdated = timestamp;
-      }
-    }
-  });
-
-  return groupedData;
+    });
+    return groupedData;
+  } catch (e) { return null; }
 }
 
 // 🔹 Main loop
 async function main() {
-  console.log("🚀 Starting Engine Voting fetch cycle...");
-
+  console.log("🚀 Starting Engine Voting fetch cycle with Telegram Alerts...");
   const RUN_DURATION_MS = 55 * 1000;
-  const INTERVAL_MS     = 5 * 1000;
-  const MIN_WAIT_MS     = 1000;
-
+  const INTERVAL_MS     = 5000;
   const startTime = Date.now();
-  let cycleCount = 0;
+  let alertedSet = new Set(); // Track alerts in this script run
 
-  console.log("📥 Fetching baseline data from Firebase (engine-voting/grafana/queue_metrics)...");
+  console.log("📥 Fetching baseline...");
   let baselineData = {};
   try {
     const snapshot = await db.ref("engine-voting/grafana/queue_metrics").once("value");
-    if (snapshot.exists()) {
-      baselineData = snapshot.val();
-      console.log("✅ Baseline data loaded.");
-    }
-  } catch (err) {
-    console.warn("⚠️ Could not fetch baseline data:", err.message);
-  }
+    if (snapshot.exists()) baselineData = snapshot.val();
+  } catch (err) {}
 
-  const hardKillTimer = setTimeout(() => {
-    console.log("⏱️ Hard kill timer triggered. Force exiting.");
-    process.exit(0);
-  }, 58 * 1000);
+  const hardKillTimer = setTimeout(() => process.exit(0), 58 * 1000);
 
   while (Date.now() - startTime < RUN_DURATION_MS) {
     const cycleStart = Date.now();
-    cycleCount++;
-    console.log(`🔄 Voting Cycle #${cycleCount} started at ${new Date().toISOString()}`);
-
     try {
-      const results = await Promise.all(
-        projects.map(async project => {
-          try {
-            const data = await fetchProject(project);
-            return { project, data };
-          } catch (err) {
-            console.error(`❌ Project ${project} failed: ${err.message}`);
-            return { project, data: null };
-          }
-        })
-      );
+      const results = await Promise.all(projects.map(async p => ({ project: p, data: await fetchProject(p) })));
+      const allDataWithDelta = {};
 
-      const allData = {};
-      results.forEach(({ project, data }) => {
-        if (!data) return;
-
-        const processedData = {};
-        Object.keys(data).forEach(metricName => {
-          const current = data[metricName];
-          const baseline = baselineData[project] ? baselineData[project][metricName] : null;
-          
+      for (const { project, data } of results) {
+        if (!data) continue;
+        const processed = {};
+        
+        Object.keys(data).forEach(mName => {
+          const current = data[mName];
+          const baseline = baselineData[project] ? baselineData[project][mName] : null;
           let delta = 0;
+
           if (baseline && baseline.total !== null && current.total !== null) {
             delta = current.total - baseline.total;
+            
+            // ⚠️ ALERT LOGIC: Drop > 5 pieces
+            const drop = baseline.total - current.total;
+            if (drop > 5 && !alertedSet.has(project)) {
+              const msg = `⚠️ ${project.toUpperCase()} Engine Voting Drop!\nPrevious: ${baseline.total}\nCurrent: ${current.total}\nDrop: -${drop}`;
+              sendTelegram(msg);
+              alertedSet.add(project);
+            }
           }
-
-          processedData[metricName] = {
-            ...current,
-            minuteDelta: delta
-          };
+          processed[mName] = { ...current, minuteDelta: delta };
         });
+        allDataWithDelta[project] = processed;
+      }
 
-        allData[project] = processedData;
-      });
+      await db.ref("engine-voting/grafana/queue_metrics").set({ ...allDataWithDelta, _lastUpdated: Date.now() });
+      console.log(`✅ Update complete: ${new Date().toLocaleTimeString()}`);
+    } catch (e) { console.error("❌ Cycle error:", e.message); }
 
-      await Promise.race([
-        db.ref("engine-voting/grafana/queue_metrics").set({
-          ...allData,
-          _lastUpdated: Date.now()
-        }),
-        new Promise((_, reject) =>
-          setTimeout(() => reject(new Error("Firebase write timeout")), 4000)
-        )
-      ]);
-
-      console.log(`✅ Firebase (Voting) updated at ${new Date().toISOString()}`);
-    } catch (e) {
-      console.error("❌ Cycle error:", e.message);
-    }
-
-    const cycleEnd = Date.now();
-    const nextCycleTarget = cycleStart + INTERVAL_MS;
-    const waitTime = Math.max(MIN_WAIT_MS, nextCycleTarget - cycleEnd);
-    await new Promise(resolve => setTimeout(resolve, waitTime));
+    const waitTime = Math.max(1000, (cycleStart + INTERVAL_MS) - Date.now());
+    await new Promise(r => setTimeout(r, waitTime));
   }
-
   clearTimeout(hardKillTimer);
-  console.log(`✅ Done. ${cycleCount} cycles completed. Exiting.`);
   await admin.app().delete();
   process.exit(0);
 }
 
-main().catch(err => {
-  console.error("💥 Fatal error in main loop:");
-  console.error(err);
-  process.exit(1);
-});
+main().catch(err => { console.error(err); process.exit(1); });
