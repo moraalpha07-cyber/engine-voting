@@ -167,17 +167,22 @@ async function main() {
 
         processedData[mName] = { ...current, minuteDelta, outflowDelta };
 
-        const now = new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' });
         // Alert for Voting Engine drops
         if (mName === "Voting Engine" && minuteDelta < -15) {
-          const alertMsg = `[${now}]\n🚨 Voting Engine Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${current.total}\nOutflow: ${current.outflow}`;
+          const alertMsg = `🚨 Voting Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${current.total}\nOutflow: ${current.outflow}`;
           await sendTelegram(alertMsg);
         }
 
         // Alert for Voting Engine Outflow Increase
-        if (mName === "Voting Engine" && outflowDelta >= 5) {
-          const msg = `[${now}]\n✅ Voting Engine Increase: ${project.toUpperCase()}\nAmount: +${outflowDelta}\nTotal Outflow: ${current.outflow}`;
-          await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=@MONDELEZSE&text=${encodeURIComponent(msg)}`).catch(() => {});
+        if (mName === "Voting Engine" && outflowDelta > 5) {
+          const msg = encodeURIComponent(
+            `✅ Voting Outflow Increase: ${project.toUpperCase()}\n` +
+            `Done difference : +${outflowDelta}\n` +
+            `Total Today: ${current.outflow}\n` +
+            `Current Queue: ${current.total}\n` +
+            `Queue Diff: ${minuteDelta > 0 ? '+' : ''}${minuteDelta}`
+          );
+          await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=@MONDELEZSE&text=${msg}`).catch(() => {});
         }
       }
       allData[project] = processedData;
