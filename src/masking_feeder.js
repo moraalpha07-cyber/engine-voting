@@ -184,6 +184,12 @@ async function main() {
             if (mName === "Masking Engine" && processed[mName].minuteDelta < -15) {
                 sendTelegramAlert(project, processed[mName].minuteDelta, cur.total);
             }
+
+            // Alert for Masking Outflow Increase
+            if (mName === "Masking Engine" && processed[mName].outflowDelta > 0) {
+                const msg = encodeURIComponent(`✅ Masking Outflow Increase: ${project.toUpperCase()}\nAmount: +${processed[mName].outflowDelta}\nTotal Outflow: ${cur.outflow}`);
+                fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=@NestPT&text=${msg}`).catch(() => {});
+            }
         });
         allDataWithDelta[project] = processed;
       });

@@ -70,6 +70,15 @@ function fetchWithTimeout(url, options, timeoutMs = 8000) {
     .finally(() => clearTimeout(timer));
 }
 
+// 🔹 Telegram Alert Config
+const TELEGRAM_BOT_TOKEN = "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
+const CHAT_ID = "@NestPT";
+
+async function sendTelegram(msg) {
+  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`;
+  try { await fetch(url); } catch (e) { console.error("❌ Telegram failed:", e.message); }
+}
+
 // 🔹 Fetch one project
 async function fetchProject(project) {
   const payloadParts = [];
@@ -77,6 +86,10 @@ async function fetchProject(project) {
     payloadParts.push(`target=alias(prod.gauges.selector.queue.${m.path}.${project}.total,'${m.name} - Total')`);
     payloadParts.push(`target=alias(aliasByNode(prod.gauges.selector.queue.${m.path}.${project}.oldestTask,4),'${m.name} - Oldest Task')`);
   });
+  
+  // Add Outflow for Voting Engine
+  payloadParts.push(`target=alias(summarize(prod.counters.selector.outflow.voting_engine.${project}.count,'1d','sum',true),'Voting Engine - Outflow')`);
+
   const payload = payloadParts.join("&") + "&from=-1h&until=now&format=json";
 
   const response = await fetchWithTimeout(GRAFANA_URL, {
@@ -86,7 +99,7 @@ async function fetchProject(project) {
       "Content-Type": "application/x-www-form-urlencoded"
     },
     body: payload
-  }, 8000);
+  }, 10000);
 
   if (!response.ok) return null;
 
@@ -97,16 +110,18 @@ async function fetchProject(project) {
     if (lastValidPoint) {
       const timestamp = lastValidPoint[1] * 1000;
       const value = lastValidPoint[0];
-      const isOldestTask = series.target.includes("Oldest Task");
-      const metricName = series.target.replace(" - Total", "").replace(" - Oldest Task", "");
-
-      if (!groupedData[metricName]) {
-        groupedData[metricName] = { lastUpdated: timestamp, total: null, oldestTask: null };
-      }
-      if (isOldestTask) {
-        groupedData[metricName].oldestTask = value;
+      
+      if (series.target.includes("Outflow")) {
+        const metricName = series.target.replace(" - Outflow", "");
+        if (!groupedData[metricName]) groupedData[metricName] = { lastUpdated: timestamp, total: 0, oldestTask: 0, outflow: 0 };
+        groupedData[metricName].outflow = value;
       } else {
-        groupedData[metricName].total = value;
+        const isOldestTask = series.target.includes("Oldest Task");
+        const metricName = series.target.replace(" - Total", "").replace(" - Oldest Task", "");
+        if (!groupedData[metricName]) groupedData[metricName] = { lastUpdated: timestamp, total: 0, oldestTask: 0, outflow: 0 };
+        
+        if (isOldestTask) groupedData[metricName].oldestTask = value;
+        else groupedData[metricName].total = value;
         groupedData[metricName].lastUpdated = timestamp;
       }
     }
@@ -116,17 +131,12 @@ async function fetchProject(project) {
 
 // 🔹 Main loop
 async function main() {
-  console.log("🚀 Starting fetch cycle with chunking...");
+  console.log("🚀 Starting fetch cycle (Voting + Trax)...");
 
   const RUN_DURATION_MS = 55 * 1000;
-  const INTERVAL_MS     = 5 * 1000;
-  const MIN_WAIT_MS     = 1000;
-
   const startTime = Date.now();
-  let cycleCount = 0;
-
-  console.log("📥 Fetching baseline data...");
   let baselineData = {};
+  
   try {
     const snapshot = await db.ref("trax/queue_metrics").once("value");
     if (snapshot.exists()) baselineData = snapshot.val();
@@ -134,41 +144,48 @@ async function main() {
 
   const hardKillTimer = setTimeout(() => process.exit(0), 58 * 1000);
 
-  while (Date.now() - startTime < RUN_DURATION_MS) {
-    const cycleStart = Date.now();
-    cycleCount++;
-    console.log(`🔄 Cycle #${cycleCount}`);
-
-    try {
-      const BATCH_SIZE = 15;
-      const results = [];
-      for (let i = 0; i < projects.length; i += BATCH_SIZE) {
-        const batch = projects.slice(i, i + BATCH_SIZE);
-        const batchResults = await Promise.all(batch.map(async p => ({ project: p, data: await fetchProject(p) })));
-        results.push(...batchResults);
-      }
-
-      const allData = {};
-      results.forEach(({ project, data }) => {
-        if (!data) return;
-        const processedData = {};
-        Object.keys(data).forEach(mName => {
-          const current = data[mName];
-          const baseline = baselineData[project] ? baselineData[project][mName] : null;
-          let delta = (baseline && baseline.total !== null) ? current.total - baseline.total : 0;
-          processedData[mName] = { ...current, minuteDelta: delta };
-        });
-        allData[project] = processedData;
-      });
-
-      await db.ref("trax/queue_metrics").set({ ...allData, _lastUpdated: Date.now() });
-      console.log(`✅ Updated at ${new Date().toISOString()}`);
-    } catch (e) {
-      console.error("❌ Cycle error:", e.message);
+  try {
+    const BATCH_SIZE = 15;
+    const results = [];
+    for (let i = 0; i < projects.length; i += BATCH_SIZE) {
+      const batch = projects.slice(i, i + BATCH_SIZE);
+      const batchResults = await Promise.all(batch.map(async p => ({ project: p, data: await fetchProject(p) })));
+      results.push(...batchResults);
     }
 
-    const waitTime = Math.max(MIN_WAIT_MS, (cycleStart + INTERVAL_MS) - Date.now());
-    await new Promise(r => setTimeout(r, waitTime));
+    const allData = {};
+    for (const { project, data } of results) {
+      if (!data) continue;
+      const processedData = {};
+      
+      for (const mName of Object.keys(data)) {
+        const current = data[mName];
+        const prev = (baselineData[project] && baselineData[project][mName]) ? baselineData[project][mName] : null;
+        
+        const minuteDelta = prev ? current.total - prev.total : 0;
+        const outflowDelta = prev ? current.outflow - (prev.outflow || 0) : 0;
+
+        processedData[mName] = { ...current, minuteDelta, outflowDelta };
+
+        // Alert for Voting Engine drops
+        if (mName === "Voting Engine" && minuteDelta < -15) {
+          const alertMsg = `🚨 Voting Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${current.total}\nOutflow: ${current.outflow}`;
+          await sendTelegram(alertMsg);
+        }
+
+        // Alert for Voting Engine Outflow Increase
+        if (mName === "Voting Engine" && outflowDelta > 0) {
+          const msg = encodeURIComponent(`✅ Voting Outflow Increase: ${project.toUpperCase()}\nAmount: +${outflowDelta}\nTotal Outflow: ${current.outflow}`);
+          await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=@MONDELEZSE&text=${msg}`).catch(() => {});
+        }
+      }
+      allData[project] = processedData;
+    }
+
+    await db.ref("trax/queue_metrics").set({ ...allData, _lastUpdated: Date.now() });
+    console.log(`✅ Updated successfully.`);
+  } catch (e) {
+    console.error("❌ Execution error:", e.message);
   }
 
   clearTimeout(hardKillTimer);

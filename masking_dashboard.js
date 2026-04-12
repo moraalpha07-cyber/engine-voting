@@ -228,6 +228,12 @@
             const m = item.mData;
             const e = item.eData;
 
+            const mDeltaClass = item.mDelta > 0 ? 'up' : (item.mDelta < 0 ? 'down' : 'zero');
+            const mDeltaText = item.mDelta > 0 ? `+${item.mDelta}` : (item.mDelta === 0 ? '±0' : item.mDelta);
+
+            const eDeltaClass = item.eDelta > 0 ? 'up' : (item.eDelta < 0 ? 'down' : 'zero');
+            const eDeltaText = item.eDelta > 0 ? `+${item.eDelta}` : (item.eDelta === 0 ? '±0' : item.eDelta);
+
             const oDeltaClass = item.oDelta > 0 ? 'up' : (item.oDelta < 0 ? 'down' : 'zero');
             const oDeltaText = item.oDelta > 0 ? `+${item.oDelta}` : (item.oDelta === 0 ? '±0' : item.oDelta);
 
