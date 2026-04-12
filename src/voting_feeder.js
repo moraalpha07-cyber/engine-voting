@@ -115,7 +115,7 @@ async function main() {
               const msg = `[${now}]\n🚨 Voting Engine Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${cur.total}\nOutflow: ${cur.outflow}`;
               await sendTelegram(msg, CHAT_NESTPT);
             }
-            if (outflowDelta >= 5) {
+            if (outflowDelta >= 10) {
               const msg = `[${now}]\n✅ Voting Engine Increase: ${project.toUpperCase()}\nAmount: +${outflowDelta}\nTotal Outflow: ${cur.outflow}`;
               await sendTelegram(msg, CHAT_MONDELEZSE);
             }
