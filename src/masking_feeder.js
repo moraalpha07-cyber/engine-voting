@@ -9,42 +9,17 @@ const SESSION_ID = process.env.GRAFANA_SESSION_ID;
 
 // 🔹 Telegram Config
 const TELEGRAM_TOKEN = "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
-const TELEGRAM_CHAT_ID = "@NestPT";
+const CHAT_NESTPT = "@NestPT";
 
-async function sendTelegramAlert(project, delta, current) {
-  const text = encodeURIComponent(`🚨 Masking Alert: ${project.toUpperCase()}\nAdu Wena Gaana: ${Math.abs(delta)}\nCurrent Queue: ${current}`);
-  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${text}`;
-  try {
-    await fetch(url);
-    console.log(`📡 Telegram alert sent for ${project}`);
-  } catch (e) {
-    console.error("❌ Telegram error:", e.message);
-  }
-}
-
-// 🔹 Validate Secrets
-if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-  console.error("❌ ERROR: FIREBASE_SERVICE_ACCOUNT is missing!");
-  process.exit(1);
-}
-
-if (!SESSION_ID) {
-  console.error("❌ ERROR: GRAFANA_SESSION_ID is missing!");
-  process.exit(1);
+async function sendTelegram(msg, chatId) {
+  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(msg)}`;
+  try { await fetch(url); } catch (e) { console.error("❌ Telegram failed:", e.message); }
 }
 
 // 🔹 Firebase init
-let serviceAccount;
-try {
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-} catch (e) {
-  console.error("❌ ERROR: FIREBASE_SERVICE_ACCOUNT is not a valid JSON string!");
-  process.exit(1);
-}
-
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
+    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)),
     databaseURL: DATABASE_URL
   });
 }
@@ -80,137 +55,96 @@ async function fetchProject(project) {
   metrics.forEach(m => {
     payloadParts.push(`target=alias(prod.gauges.selector.queue.${m.path}.${project}.total,'${m.name} - Total')`);
     payloadParts.push(`target=alias(aliasByNode(prod.gauges.selector.queue.${m.path}.${project}.oldestTask,4),'${m.name} - Oldest Task')`);
-    if (m.path === "masking_engine") {
-      payloadParts.push(`target=alias(prod.counters.selector.outflow.masking_engine.${project}.count,'${m.name} - Outflow')`);
-    }
+    payloadParts.push(`target=alias(summarize(prod.counters.selector.outflow.${m.path}.${project}.count,'1d','sum',true),'${m.name} - Outflow')`);
   });
-  const payload = payloadParts.join("&") + "&from=today&until=now&format=json";
+  const payload = payloadParts.join("&") + "&from=-1h&until=now&format=json";
 
-  const response = await fetch(GRAFANA_URL, {
-    method: "POST",
-    headers: {
-      "Cookie": `grafana_session=${SESSION_ID}`,
-      "Content-Type": "application/x-www-form-urlencoded"
-    },
-    body: payload
-  }).catch(() => null);
+  try {
+    const response = await fetch(GRAFANA_URL, {
+      method: "POST",
+      headers: { "Cookie": `grafana_session=${SESSION_ID}`, "Content-Type": "application/x-www-form-urlencoded" },
+      body: payload
+    });
+    if (!response.ok) return null;
+    const json = await response.json();
+    const groupedData = {};
+    json.forEach(series => {
+      const dp = series.datapoints.filter(d => d[0] !== null);
+      if (dp.length > 0) {
+        const last = dp[dp.length - 1];
+        const isOutflow = series.target.includes("Outflow");
+        const isOldest = series.target.includes("Oldest Task");
+        const mName = series.target.split(" - ")[0];
 
-  if (!response || !response.ok) return null;
-
-  const json = await response.json();
-  const groupedData = {};
-  json.forEach(series => {
-    const datapoints = series.datapoints.filter(dp => dp[0] !== null);
-    if (datapoints.length > 0) {
-      const lastPoint = datapoints[datapoints.length - 1];
-      const timestamp = lastPoint[1] * 1000;
-      const value = lastPoint[0];
-      const isOldestTask = series.target.includes("Oldest Task");
-      const isOutflow = series.target.includes("Outflow");
-      const metricName = series.target.replace(" - Total", "").replace(" - Oldest Task", "").replace(" - Outflow", "");
-
-      if (!groupedData[metricName]) {
-        groupedData[metricName] = { lastUpdated: timestamp, total: null, oldestTask: null, outflow: 0 };
+        if (!groupedData[mName]) groupedData[mName] = { lastUpdated: last[1]*1000, total: 0, oldestTask: 0, outflow: 0 };
+        if (isOutflow) groupedData[mName].outflow = last[0];
+        else if (isOldest) groupedData[mName].oldestTask = last[0];
+        else { groupedData[mName].total = last[0]; groupedData[mName].lastUpdated = last[1]*1000; }
       }
-
-      if (isOldestTask) {
-        groupedData[metricName].oldestTask = value;
-      } else if (isOutflow) {
-        groupedData[metricName].outflow = datapoints.reduce((acc, dp) => acc + dp[0], 0);
-      } else {
-        groupedData[metricName].total = value;
-        groupedData[metricName].lastUpdated = timestamp;
-      }
-    }
-  });
-  return groupedData;
+    });
+    return groupedData;
+  } catch (e) { return null; }
 }
 
 async function main() {
-  console.log("🚀 Starting Masking fetch cycle (Chunked for stability)...");
-
+  console.log("🚀 Starting Masking engine feeder...");
   const RUN_DURATION_MS = 55 * 1000;
   const INTERVAL_MS     = 5000;
-  const HISTORY_SIZE    = 6;
-
   const startTime = Date.now();
-  let cycleCount = 0;
-  let history = []; 
+  let baselineData = {};
 
   try {
     const snap = await db.ref("masking/grafana/queue_metrics").once("value");
-    if (snap.exists()) {
-      const initial = snap.val();
-      for (let i = 0; i < HISTORY_SIZE; i++) history.push(initial);
-    }
+    if (snap.exists()) baselineData = snap.val();
   } catch (e) {}
 
-  const hardKillTimer = setTimeout(() => process.exit(0), 58 * 1000);
+  const killTimer = setTimeout(() => process.exit(0), 58 * 1000);
 
   while (Date.now() - startTime < RUN_DURATION_MS) {
     const cycleStart = Date.now();
-    cycleCount++;
-    console.log(`🔄 Cycle #${cycleCount} [Chunked Fetch]`);
-
     try {
       const BATCH_SIZE = 15;
       const results = [];
       for (let i = 0; i < projects.length; i += BATCH_SIZE) {
         const batch = projects.slice(i, i + BATCH_SIZE);
-        const batchResults = await Promise.all(batch.map(async p => ({ project: p, data: await fetchProject(p) })));
-        results.push(...batchResults);
+        const batchRes = await Promise.all(batch.map(async p => ({ project: p, data: await fetchProject(p) })));
+        results.push(...batchRes);
       }
 
-      const currentSnapshot = {};
-      results.forEach(({ project, data }) => { if (data) currentSnapshot[project] = data; });
-
-      const baseline = history.length > 0 ? history[0] : currentSnapshot;
-      const allDataWithDelta = {};
-
-      Object.keys(currentSnapshot).forEach(project => {
-        const currentM = currentSnapshot[project];
-        const baselineM = baseline[project] || {};
+      const allData = {};
+      for (const { project, data } of results) {
+        if (!data) continue;
         const processed = {};
+        for (const mName of Object.keys(data)) {
+          const cur = data[mName];
+          const prev = (baselineData[project] && baselineData[project][mName]) ? baselineData[project][mName] : null;
+          const minuteDelta = prev ? cur.total - prev.total : 0;
+          const outflowDelta = prev ? cur.outflow - (prev.outflow || 0) : 0;
 
-        Object.keys(currentM).forEach(mName => {
-            const cur = currentM[mName];
-            const base = baselineM[mName] || { total: cur.total, outflow: cur.outflow };
-            processed[mName] = { 
-                ...cur, 
-                minuteDelta: cur.total - base.total,
-                outflowDelta: cur.outflow - base.outflow
-            };
+          processed[mName] = { ...cur, minuteDelta, outflowDelta };
 
-            if (mName === "Masking Engine" && processed[mName].minuteDelta < -15) {
-                sendTelegramAlert(project, processed[mName].minuteDelta, cur.total);
-            }
+          // Alerts for Masking Engine
+          if (mName === "Masking Engine") {
+             if (minuteDelta < -15) {
+                await sendTelegram(`🚨 Masking Drop: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nQueue: ${cur.total}`, CHAT_NESTPT);
+             }
+             if (outflowDelta > 0) {
+                await sendTelegram(`✅ Masking Outflow Increase: ${project.toUpperCase()}\nAmount: +${outflowDelta}\nTotal Outflow: ${cur.outflow}`, CHAT_NESTPT);
+             }
+          }
+        }
+        allData[project] = processed;
+      }
 
-            // Alert for Masking Outflow Increase
-            if (mName === "Masking Engine" && processed[mName].outflowDelta > 0) {
-                const msg = encodeURIComponent(`✅ Masking Outflow Increase: ${project.toUpperCase()}\nAmount: +${processed[mName].outflowDelta}\nTotal Outflow: ${cur.outflow}`);
-                fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=@NestPT&text=${msg}`).catch(() => {});
-            }
-        });
-        allDataWithDelta[project] = processed;
-      });
+      await db.ref("masking/grafana/queue_metrics").set({ ...allData, _lastUpdated: Date.now() });
+      console.log(`✅ Updated: ${new Date().toLocaleTimeString()}`);
+    } catch (e) { console.error("❌ Cycle error:", e.message); }
 
-      history.push(currentSnapshot);
-      if (history.length > HISTORY_SIZE) history.shift();
-
-      await db.ref("masking/grafana/queue_metrics").set({ ...allDataWithDelta, _lastUpdated: Date.now() });
-      console.log(`✅ Updated at ${new Date().toISOString()}`);
-
-    } catch (e) {
-      console.error("❌ Cycle error:", e.message);
-    }
-
-    const waitTime = Math.max(1000, (cycleStart + INTERVAL_MS) - Date.now());
-    await new Promise(r => setTimeout(r, waitTime));
+    await new Promise(r => setTimeout(r, Math.max(1000, (cycleStart + INTERVAL_MS) - Date.now())));
   }
-
-  clearTimeout(hardKillTimer);
+  clearTimeout(killTimer);
   await admin.app().delete();
   process.exit(0);
 }
 
-main().catch(e => { console.error(e); process.exit(1); });
+main().catch(() => process.exit(1));
