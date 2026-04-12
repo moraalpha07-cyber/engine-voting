@@ -123,24 +123,15 @@ async function main() {
 
           processed[mName] = { ...cur, minuteDelta, outflowDelta };
 
-          // Alerts
-          const now = new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' });
-          if (mName === "Masking Engine") {
+          // Alerts for Masking and Masking Engine
+          if (mName === "Masking Engine" || mName === "Masking") {
+             const now = new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' });
              if (minuteDelta < -15) {
-                const msg = `[${now}]\n🚨 Masking Engine Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${cur.total}\nOutflow: ${cur.outflow}`;
+                const msg = `[${now}]\n🚨 ${mName} Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${cur.total}\nOutflow: ${cur.outflow}`;
                 await sendTelegram(msg, CHAT_NESTPT);
              }
-             if (outflowDelta >= 10) {
-                const msg = `[${now}]\n✅ Masking Engine Increase: ${project.toUpperCase()}\nAmount: +${outflowDelta}\nTotal Outflow: ${cur.outflow}`;
-                await sendTelegram(msg, CHAT_NESTPT);
-             }
-          } else if (mName === "Masking") {
-             if (minuteDelta < -15) {
-                const msg = `[${now}]\n⚠️ Masking Queue Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${cur.total}\nOutflow: ${cur.outflow}`;
-                await sendTelegram(msg, CHAT_NESTPT);
-             }
-             if (outflowDelta >= 10) {
-                const msg = `[${now}]\n⭐ Masking Queue Increase: ${project.toUpperCase()}\nAmount: +${outflowDelta}\nTotal Outflow: ${cur.outflow}`;
+             if (outflowDelta >= 5) {
+                const msg = `[${now}]\n✅ ${mName} Increase: ${project.toUpperCase()}\nAmount: +${outflowDelta}\nTotal Outflow: ${cur.outflow}`;
                 await sendTelegram(msg, CHAT_NESTPT);
              }
           }

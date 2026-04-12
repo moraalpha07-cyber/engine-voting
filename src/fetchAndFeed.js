@@ -72,7 +72,7 @@ function fetchWithTimeout(url, options, timeoutMs = 8000) {
 
 // 🔹 Telegram Alert Config
 const TELEGRAM_BOT_TOKEN = "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
-const CHAT_ID = "@NestPT";
+const CHAT_ID = "@MONDELEZSE";
 
 async function sendTelegram(msg) {
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`;
