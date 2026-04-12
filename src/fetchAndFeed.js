@@ -176,13 +176,13 @@ async function main() {
         // Alert for Voting Engine Outflow Increase
         if (mName === "Voting Engine" && outflowDelta > 5) {
           const msg = encodeURIComponent(
-            `✅ Voting Outflow Increase: ${project.toUpperCase()}\n` +
-            `Done difference : +${outflowDelta}\n` +
-            `Total Today: ${current.outflow}\n` +
+            `⚠️ <b>${project.toUpperCase()}</b> - EV Drop!\n` +
+            `Drop : +${outflowDelta}\n` +
+            `Total done Today: ${current.outflow}\n` +
             `Current Queue: ${current.total}\n` +
             `Queue Diff: ${minuteDelta > 0 ? '+' : ''}${minuteDelta}`
           );
-          await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=@MONDELEZSE&text=${msg}`).catch(() => {});
+          await fetch(`https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=@MONDELEZSE&text=${msg}&parse_mode=HTML`).catch(() => {});
         }
       }
       allData[project] = processedData;
