@@ -109,11 +109,16 @@ async function main() {
           processed[mName] = { ...cur, minuteDelta, outflowDelta };
 
           // Alerts
-          if (mName === "Voting Engine" && minuteDelta < -15) {
-            await sendTelegram(`🚨 Voting Drop: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nQueue: ${cur.total}`, CHAT_NESTPT);
-          }
-          if (mName === "Voting Engine" && outflowDelta >= 5) {
-            await sendTelegram(`✅ Voting Increase: ${project.toUpperCase()}\nAmount: +${outflowDelta}\nTotal Outflow: ${cur.outflow}`, CHAT_MONDELEZSE);
+          if (mName === "Voting Engine") {
+            const now = new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' });
+            if (minuteDelta < -15) {
+              const msg = `[${now}]\n🚨 Voting Engine Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${cur.total}\nOutflow: ${cur.outflow}`;
+              await sendTelegram(msg, CHAT_NESTPT);
+            }
+            if (outflowDelta >= 5) {
+              const msg = `[${now}]\n✅ Voting Engine Increase: ${project.toUpperCase()}\nAmount: +${outflowDelta}\nTotal Outflow: ${cur.outflow}`;
+              await sendTelegram(msg, CHAT_MONDELEZSE);
+            }
           }
         }
         allData[project] = processed;
