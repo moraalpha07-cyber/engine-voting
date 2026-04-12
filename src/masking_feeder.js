@@ -75,15 +75,6 @@ const metrics = [
   { path: "masking",                name: "Masking" }
 ];
 
-// 🔹 Fetch with timeout helper
-function fetchWithTimeout(url, options, timeoutMs = 8000) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  return fetch(url, { ...options, signal: controller.signal })
-    .finally(() => clearTimeout(timer));
-}
-
-// 🔹 Fetch one project
 async function fetchProject(project) {
   const payloadParts = [];
   metrics.forEach(m => {
@@ -95,16 +86,16 @@ async function fetchProject(project) {
   });
   const payload = payloadParts.join("&") + "&from=today&until=now&format=json";
 
-  const response = await fetchWithTimeout(GRAFANA_URL, {
+  const response = await fetch(GRAFANA_URL, {
     method: "POST",
     headers: {
       "Cookie": `grafana_session=${SESSION_ID}`,
       "Content-Type": "application/x-www-form-urlencoded"
     },
     body: payload
-  }, 8000);
+  }).catch(() => null);
 
-  if (!response.ok) return null;
+  if (!response || !response.ok) return null;
 
   const json = await response.json();
   const groupedData = {};
@@ -132,23 +123,20 @@ async function fetchProject(project) {
       }
     }
   });
-
   return groupedData;
 }
 
-// 🔹 Main loop
 async function main() {
-  console.log("🚀 Starting Masking fetch cycle (30s Rolling Delta)...");
+  console.log("🚀 Starting Masking fetch cycle (Chunked for stability)...");
 
   const RUN_DURATION_MS = 55 * 1000;
   const INTERVAL_MS     = 5000;
-  const HISTORY_SIZE    = 6; // 6 * 5s = 30s window
+  const HISTORY_SIZE    = 6;
 
   const startTime = Date.now();
   let cycleCount = 0;
-  let history = []; // Rolling buffer of snapshots for 30s diff
+  let history = []; 
 
-  // Initialize history with current Firebase state to start with some diff data
   try {
     const snap = await db.ref("masking/grafana/queue_metrics").once("value");
     if (snap.exists()) {
@@ -162,15 +150,20 @@ async function main() {
   while (Date.now() - startTime < RUN_DURATION_MS) {
     const cycleStart = Date.now();
     cycleCount++;
-    console.log(`🔄 Cycle #${cycleCount} [30s rolling diff]`);
+    console.log(`🔄 Cycle #${cycleCount} [Chunked Fetch]`);
 
     try {
-      const results = await Promise.all(projects.map(async p => ({ project: p, data: await fetchProject(p) })));
+      const BATCH_SIZE = 15;
+      const results = [];
+      for (let i = 0; i < projects.length; i += BATCH_SIZE) {
+        const batch = projects.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.all(batch.map(async p => ({ project: p, data: await fetchProject(p) })));
+        results.push(...batchResults);
+      }
 
       const currentSnapshot = {};
       results.forEach(({ project, data }) => { if (data) currentSnapshot[project] = data; });
 
-      // Calculate deltas against 30s ago (oldest in buffer)
       const baseline = history.length > 0 ? history[0] : currentSnapshot;
       const allDataWithDelta = {};
 
@@ -188,7 +181,6 @@ async function main() {
                 outflowDelta: cur.outflow - base.outflow
             };
 
-            // 🔹 Trigger Telegram Alert for significant queue drop
             if (mName === "Masking Engine" && processed[mName].minuteDelta < -15) {
                 sendTelegramAlert(project, processed[mName].minuteDelta, cur.total);
             }
@@ -196,11 +188,9 @@ async function main() {
         allDataWithDelta[project] = processed;
       });
 
-      // Update history buffer
       history.push(currentSnapshot);
       if (history.length > HISTORY_SIZE) history.shift();
 
-      // Push to Firebase
       await db.ref("masking/grafana/queue_metrics").set({ ...allDataWithDelta, _lastUpdated: Date.now() });
       console.log(`✅ Updated at ${new Date().toISOString()}`);
 
@@ -217,4 +207,4 @@ async function main() {
   process.exit(0);
 }
 
-main().catch(err => { console.error(err); process.exit(1); });
+main().catch(e => { console.error(e); process.exit(1); });
