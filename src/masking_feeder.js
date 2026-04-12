@@ -58,8 +58,11 @@ async function fetchProject(project) {
   metrics.forEach(m => {
     payloadParts.push(`target=alias(prod.gauges.selector.queue.${m.path}.${project}.total,'${m.name} - Total')`);
     payloadParts.push(`target=alias(aliasByNode(prod.gauges.selector.queue.${m.path}.${project}.oldestTask,4),'${m.name} - Oldest Task')`);
+    if (m.path === "masking_engine") {
+      payloadParts.push(`target=alias(prod.counters.selector.outflow.masking_engine.${project}.count,'${m.name} - Outflow')`);
+    }
   });
-  const payload = payloadParts.join("&") + "&from=-1h&until=now&format=json";
+  const payload = payloadParts.join("&") + "&from=today&until=now&format=json";
 
   const response = await fetchWithTimeout(GRAFANA_URL, {
     method: "POST",
@@ -75,16 +78,27 @@ async function fetchProject(project) {
   const json = await response.json();
   const groupedData = {};
   json.forEach(series => {
-    const lastValidPoint = series.datapoints.filter(dp => dp[0] !== null).pop();
-    if (lastValidPoint) {
-      const timestamp = lastValidPoint[1] * 1000;
-      const value = lastValidPoint[0];
+    const datapoints = series.datapoints.filter(dp => dp[0] !== null);
+    if (datapoints.length > 0) {
+      const lastPoint = datapoints[datapoints.length - 1];
+      const timestamp = lastPoint[1] * 1000;
+      const value = lastPoint[0];
       const isOldestTask = series.target.includes("Oldest Task");
-      const metricName = series.target.replace(" - Total", "").replace(" - Oldest Task", "");
+      const isOutflow = series.target.includes("Outflow");
+      const metricName = series.target.replace(" - Total", "").replace(" - Oldest Task", "").replace(" - Outflow", "");
 
-      if (!groupedData[metricName]) groupedData[metricName] = { lastUpdated: timestamp, total: null, oldestTask: null };
-      if (isOldestTask) groupedData[metricName].oldestTask = value;
-      else { groupedData[metricName].total = value; groupedData[metricName].lastUpdated = timestamp; }
+      if (!groupedData[metricName]) {
+        groupedData[metricName] = { lastUpdated: timestamp, total: null, oldestTask: null, outflow: 0 };
+      }
+
+      if (isOldestTask) {
+        groupedData[metricName].oldestTask = value;
+      } else if (isOutflow) {
+        groupedData[metricName].outflow = datapoints.reduce((acc, dp) => acc + dp[0], 0);
+      } else {
+        groupedData[metricName].total = value;
+        groupedData[metricName].lastUpdated = timestamp;
+      }
     }
   });
 
@@ -136,8 +150,12 @@ async function main() {
 
         Object.keys(currentM).forEach(mName => {
             const cur = currentM[mName];
-            const base = baselineM[mName] || { total: cur.total };
-            processed[mName] = { ...cur, minuteDelta: cur.total - base.total };
+            const base = baselineM[mName] || { total: cur.total, outflow: cur.outflow };
+            processed[mName] = { 
+                ...cur, 
+                minuteDelta: cur.total - base.total,
+                outflowDelta: cur.outflow - base.outflow
+            };
         });
         allDataWithDelta[project] = processed;
       });

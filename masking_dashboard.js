@@ -139,6 +139,11 @@
 
         .last-updated { font-size: 10px; text-align: center; padding: 10px; color: #555; background: #0a0a0a; }
         #masking-minimize { cursor: pointer; color: #888; font-size: 18px; margin-left: 5px; }
+
+        /* Alert Styling */
+        .adu-wena { color: #00ff88; font-weight: bold; }
+        .v-delta.down { color: #00ff88; background: rgba(0, 255, 136, 0.1); }
+        .v-delta.up { color: #ff4d4d; background: rgba(255, 77, 77, 0.1); }
     `);
 
     const container = document.createElement('div');
@@ -161,11 +166,12 @@
                     <tr>
                         <th class="p-name" data-sort="name">PROJECT <span></span></th>
                         <th class="m-col" style="text-align:right" data-sort="eDelta">ENGINE <span id="mask-sort">▼</span></th>
-                        <th class="m-col" style="text-align:right" data-sort="mDelta">MASKING <span></span></th>
+                        <th class="m-col" style="text-align:right" data-sort="oDelta">OUTFLOW <span></span></th>
+                        <th class="m-col" style="text-align:right" data-sort="mDelta">QUEUE <span></span></th>
                     </tr>
                 </thead>
                 <tbody id="masking-table-body">
-                    <tr><td colspan="3" style="text-align:center; padding: 20px; color: #666;">Waiting for data...</td></tr>
+                    <tr><td colspan="4" style="text-align:center; padding: 20px; color: #666;">Waiting for data...</td></tr>
                 </tbody>
             </table>
         </div>
@@ -192,8 +198,10 @@
                 name: p, 
                 masking: m.total, 
                 engine: e.total,
+                outflow: e.outflow || 0,
                 mDelta: m.minuteDelta,
                 eDelta: e.minuteDelta,
+                oDelta: e.outflowDelta || 0,
                 mData: m, 
                 eData: e 
             };
@@ -220,10 +228,8 @@
             const m = item.mData;
             const e = item.eData;
 
-            const mDeltaClass = m.minuteDelta > 0 ? 'up' : (m.minuteDelta < 0 ? 'down' : 'zero');
-            const mDeltaText = m.minuteDelta > 0 ? `+${m.minuteDelta}` : (m.minuteDelta === 0 ? '±0' : m.minuteDelta);
-            const eDeltaClass = e.minuteDelta > 0 ? 'up' : (e.minuteDelta < 0 ? 'down' : 'zero');
-            const eDeltaText = e.minuteDelta > 0 ? `+${e.minuteDelta}` : (e.minuteDelta === 0 ? '±0' : e.minuteDelta);
+            const oDeltaClass = item.oDelta > 0 ? 'up' : (item.oDelta < 0 ? 'down' : 'zero');
+            const oDeltaText = item.oDelta > 0 ? `+${item.oDelta}` : (item.oDelta === 0 ? '±0' : item.oDelta);
 
             html += `
                 <tr>
@@ -232,18 +238,46 @@
                         <span class="m-val">${e.total}</span><span class="m-delta ${eDeltaClass}">${eDeltaText}</span>
                     </td>
                     <td class="m-col" style="text-align:right">
+                        <span class="m-val">${item.outflow}</span><span class="m-delta ${oDeltaClass}">${oDeltaText}</span>
+                    </td>
+                    <td class="m-col" style="text-align:right">
                         <span class="m-val">${m.total}</span><span class="m-delta ${mDeltaClass}">${mDeltaText}</span>
                     </td>
                 </tr>
             `;
         });
 
-        body.innerHTML = html || '<tr><td colspan="3" style="text-align:center; padding: 20px;">No visible matching projects</td></tr>';
+        body.innerHTML = html || '<tr><td colspan="4" style="text-align:center; padding: 20px;">No visible matching projects</td></tr>';
+    }
+
+    const TELEGRAM_URL = "https://api.telegram.org/bot1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA/sendMessage";
+    const CHAT_ID = "@NestPT";
+
+    function sendTelegramAlert(project, delta, current) {
+        const text = encodeURIComponent(`🚨 Masking Alert: ${project.toUpperCase()}\nAdu Wena Gaana: ${Math.abs(delta)}\nCurrent Queue: ${current}`);
+        fetch(`${TELEGRAM_URL}?chat_id=${CHAT_ID}&text=${text}`)
+            .then(res => console.log(`Telegram sent for ${project}`))
+            .catch(err => console.error("Telegram error:", err));
     }
 
     db.ref("masking/grafana/queue_metrics").on("value", (snapshot) => {
-        currentData = snapshot.val();
-        if (!currentData) return;
+        const newData = snapshot.val();
+        if (!newData) return;
+
+        // Alerting logic (Decreasing amount)
+        if (currentData) {
+            Object.keys(newData).forEach(p => {
+                if (p === '_lastUpdated') return;
+                const oldM = currentData[p] ? currentData[p]["Masking Engine"] : null;
+                const newM = newData[p] ? newData[p]["Masking Engine"] : null;
+                
+                if (oldM && newM && newM.minuteDelta < -15) {
+                    sendTelegramAlert(p, newM.minuteDelta, newM.total);
+                }
+            });
+        }
+
+        currentData = newData;
         renderTable();
         document.getElementById('masking-last-updated').innerText = `Updated: ${new Date(currentData._lastUpdated).toLocaleTimeString()}`;
     });
