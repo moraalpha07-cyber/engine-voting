@@ -250,32 +250,9 @@
         body.innerHTML = html || '<tr><td colspan="4" style="text-align:center; padding: 20px;">No visible matching projects</td></tr>';
     }
 
-    const TELEGRAM_URL = "https://api.telegram.org/bot1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA/sendMessage";
-    const CHAT_ID = "@NestPT";
-
-    function sendTelegramAlert(project, delta, current) {
-        const text = encodeURIComponent(`🚨 Masking Alert: ${project.toUpperCase()}\nAdu Wena Gaana: ${Math.abs(delta)}\nCurrent Queue: ${current}`);
-        fetch(`${TELEGRAM_URL}?chat_id=${CHAT_ID}&text=${text}`)
-            .then(res => console.log(`Telegram sent for ${project}`))
-            .catch(err => console.error("Telegram error:", err));
-    }
-
     db.ref("masking/grafana/queue_metrics").on("value", (snapshot) => {
         const newData = snapshot.val();
         if (!newData) return;
-
-        // Alerting logic (Decreasing amount)
-        if (currentData) {
-            Object.keys(newData).forEach(p => {
-                if (p === '_lastUpdated') return;
-                const oldM = currentData[p] ? currentData[p]["Masking Engine"] : null;
-                const newM = newData[p] ? newData[p]["Masking Engine"] : null;
-                
-                if (oldM && newM && newM.minuteDelta < -15) {
-                    sendTelegramAlert(p, newM.minuteDelta, newM.total);
-                }
-            });
-        }
 
         currentData = newData;
         renderTable();
