@@ -128,7 +128,7 @@ async function main() {
              if (minuteDelta < -15) {
                 await sendTelegram(`🚨 Masking Drop: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nQueue: ${cur.total}`, CHAT_NESTPT);
              }
-             if (outflowDelta > 0) {
+             if (outflowDelta >= 5) {
                 await sendTelegram(`✅ Masking Outflow Increase: ${project.toUpperCase()}\nAmount: +${outflowDelta}\nTotal Outflow: ${cur.outflow}`, CHAT_NESTPT);
              }
           }
@@ -137,6 +137,7 @@ async function main() {
       }
 
       await db.ref("masking/grafana/queue_metrics").set({ ...allData, _lastUpdated: Date.now() });
+      baselineData = allData; // 🔹 Update baseline to prevent duplicate alerts
       console.log(`✅ Updated: ${new Date().toLocaleTimeString()}`);
     } catch (e) { console.error("❌ Cycle error:", e.message); }
 
