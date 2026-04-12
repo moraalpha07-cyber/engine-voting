@@ -13,7 +13,7 @@ const CHAT_NESTPT = "@NestPT";
 const CHAT_MONDELEZSE = "@MONDELEZSE";
 
 async function sendTelegram(msg, chatId) {
-  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(msg)}`;
+  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(msg)}&parse_mode=HTML`;
   try { await fetch(url); } catch (e) { console.error("❌ Telegram failed:", e.message); }
 }
 
@@ -27,8 +27,7 @@ if (!admin.apps.length) {
 const db = admin.database();
 
 const projects = [
-  "straussil", "cbcdairyil", "straussdryil", "mondelezuz", "danoneuk", "mdlzrusf", "gskhu", "pgpl", "mondelezza", "ulnl", "beiersdorfkz", "beiersdorfpt",
-  "pepsicouk", "ulpt", "dlcpt", "bdftr", "marspl", "mondelezde", "mondelezno", "jtihr", "pngza2", "beiersdorfuk", "mondelezsa", "beiersdorfsp", "jdetr", "diageotz", "beiersdorfru", "marssa", "marsbh", "marsom", "mondelezse", "marsuae", "beiersdorfgr"
+  "straussil", "cbcdairyil", "straussdryil", "mondelezuz", "danoneuk", "mdlzrusf", "gskhu", "pgpl", "mondelezza", "ulnl", "beiersdorfkz", "beiersdorfpt", "pepsicouk", "ulpt", "bdftr", "marspl", "mondelezde", "jtihr", "pngza2", "beiersdorfuk", "mondelezsa", "beiersdorfsp", "jdetr", "diageotz", "beiersdorfng", "marsbh", "mondelezse", "beiersdorfgr"
 ];
 
 const metrics = [
@@ -115,8 +114,12 @@ async function main() {
               const msg = `[${now}]\n🚨 Voting Engine Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${cur.total}\nOutflow: ${cur.outflow}`;
               await sendTelegram(msg, CHAT_NESTPT);
             }
-            if (outflowDelta >= 10) {
-              const msg = `[${now}]\n✅ Voting Engine Increase: ${project.toUpperCase()}\nAmount: +${outflowDelta}\nTotal Outflow: ${cur.outflow}`;
+            if (outflowDelta > 5) {
+              const msg = `⚠️ <b>${project.toUpperCase()}</b> - EV Drop!\n` +
+                          `Drop : +${outflowDelta}\n` +
+                          `Total done Today: ${cur.outflow}\n` +
+                          `Current Queue: ${cur.total}\n` +
+                          `Queue Diff: ${minuteDelta > 0 ? '+' : ''}${minuteDelta}`;
               await sendTelegram(msg, CHAT_MONDELEZSE);
             }
           }
