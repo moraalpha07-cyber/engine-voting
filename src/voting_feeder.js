@@ -8,152 +8,126 @@ const GRAFANA_URL = "https://monitor.trax-cloud.com/api/datasources/proxy/29/ren
 const SESSION_ID = process.env.GRAFANA_SESSION_ID;
 
 // 🔹 Telegram Config
-const TELEGRAM_BOT_TOKEN = "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
-const TELEGRAM_CHAT_ID = "@MONDELEZSE";
+const TELEGRAM_TOKEN = "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
+const CHAT_NESTPT = "@NestPT";
+const CHAT_MONDELEZSE = "@MONDELEZSE";
 
-// 🔹 Validate Secrets
-if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-  console.error("❌ ERROR: FIREBASE_SERVICE_ACCOUNT is missing!");
-  process.exit(1);
-}
-
-if (!SESSION_ID) {
-  console.error("❌ ERROR: GRAFANA_SESSION_ID is missing!");
-  process.exit(1);
+async function sendTelegram(msg, chatId) {
+  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(msg)}`;
+  try { await fetch(url); } catch (e) { console.error("❌ Telegram failed:", e.message); }
 }
 
 // 🔹 Firebase init
-let serviceAccount;
-try {
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-} catch (e) {
-  console.error("❌ ERROR: FIREBASE_SERVICE_ACCOUNT is not a valid JSON string!");
-  process.exit(1);
-}
-
 if (!admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
+    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)),
     databaseURL: DATABASE_URL
   });
 }
 const db = admin.database();
 
 const projects = [
-  "pepsicouk", "ulpt", "dlcpt", "bdftr", "mdlzrusf", "marspl", "mondelezde", "mondelezno", "mondelezkaza", "jtihr", "pngza2", "beiersdorfuk", "mondelezsa", "beiersdorfsp", "jdetr", "ulbe", "diageotz", "beiersdorfru", "marssa", "diageoie", "beiersdorfng", "marsbh", "marskw", "marsom", "marsqa", "mondelezse", "marsuae", "beiersdorfgr", "diageoes", "mondelezza"
+  "straussil", "cbcdairyil", "straussdryil", "mondelezuz", "danoneuk", "mdlzrusf", "gskhu", "pgpl", "mondelezza", "ulnl", "beiersdorfkz", "beiersdorfpt",
+  "pepsicouk", "ulpt", "dlcpt", "bdftr", "marspl", "mondelezde", "mondelezno", "jtihr", "pngza2", "beiersdorfuk", "mondelezsa", "beiersdorfsp", "jdetr", "diageotz", "beiersdorfru", "marssa", "marsbh", "marsom", "mondelezse", "marsuae", "beiersdorfgr"
 ];
 
 const metrics = [
   { path: "voting_engine", name: "Voting Engine" }
 ];
 
-// 🔹 Telegram Helper
-async function sendTelegram(message) {
-  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${TELEGRAM_CHAT_ID}&text=${encodeURIComponent(message)}`;
-  try {
-    const res = await fetch(url);
-    if (!res.ok) console.error("❌ Telegram failed:", await res.text());
-    else console.log("✅ Telegram message sent.");
-  } catch (err) {
-    console.error("❌ Telegram error:", err.message);
-  }
-}
-
-// 🔹 Fetch helper
 async function fetchProject(project) {
   const payloadParts = [];
   metrics.forEach(m => {
     payloadParts.push(`target=alias(prod.gauges.selector.queue.${m.path}.${project}.total,'${m.name} - Total')`);
     payloadParts.push(`target=alias(aliasByNode(prod.gauges.selector.queue.${m.path}.${project}.oldestTask,4),'${m.name} - Oldest Task')`);
+    payloadParts.push(`target=alias(summarize(prod.counters.selector.outflow.${m.path}.${project}.count,'1d','sum',true),'${m.name} - Outflow')`);
   });
   const payload = payloadParts.join("&") + "&from=-1h&until=now&format=json";
 
   try {
     const response = await fetch(GRAFANA_URL, {
       method: "POST",
-      headers: {
-        "Cookie": `grafana_session=${SESSION_ID}`,
-        "Content-Type": "application/x-www-form-urlencoded"
-      },
+      headers: { "Cookie": `grafana_session=${SESSION_ID}`, "Content-Type": "application/x-www-form-urlencoded" },
       body: payload
     });
     if (!response.ok) return null;
     const json = await response.json();
     const groupedData = {};
     json.forEach(series => {
-      const lastValidPoint = series.datapoints.filter(dp => dp[0] !== null).pop();
-      if (lastValidPoint) {
-        const timestamp = lastValidPoint[1] * 1000;
-        const value = lastValidPoint[0];
-        const isOldestTask = series.target.includes("Oldest Task");
-        const metricName = series.target.replace(" - Total", "").replace(" - Oldest Task", "");
-        if (!groupedData[metricName]) groupedData[metricName] = { lastUpdated: timestamp, total: null, oldestTask: null };
-        if (isOldestTask) groupedData[metricName].oldestTask = value;
-        else { groupedData[metricName].total = value; groupedData[metricName].lastUpdated = timestamp; }
+      const dp = series.datapoints.filter(d => d[0] !== null);
+      if (dp.length > 0) {
+        const last = dp[dp.length - 1];
+        const isOutflow = series.target.includes("Outflow");
+        const isOldest = series.target.includes("Oldest Task");
+        const mName = series.target.split(" - ")[0];
+
+        if (!groupedData[mName]) groupedData[mName] = { lastUpdated: last[1]*1000, total: 0, oldestTask: 0, outflow: 0 };
+        if (isOutflow) groupedData[mName].outflow = last[0];
+        else if (isOldest) groupedData[mName].oldestTask = last[0];
+        else { groupedData[mName].total = last[0]; groupedData[mName].lastUpdated = last[1]*1000; }
       }
     });
     return groupedData;
   } catch (e) { return null; }
 }
 
-// 🔹 Main loop
 async function main() {
-  console.log("🚀 Starting Engine Voting fetch cycle with Telegram Alerts...");
+  console.log("🚀 Starting specialized Voting Engine feeder...");
   const RUN_DURATION_MS = 55 * 1000;
   const INTERVAL_MS     = 5000;
   const startTime = Date.now();
-  let alertedSet = new Set(); // Track alerts in this script run
-
-  console.log("📥 Fetching baseline...");
   let baselineData = {};
-  try {
-    const snapshot = await db.ref("engine-voting/grafana/queue_metrics").once("value");
-    if (snapshot.exists()) baselineData = snapshot.val();
-  } catch (err) {}
 
-  const hardKillTimer = setTimeout(() => process.exit(0), 58 * 1000);
+  try {
+    const snap = await db.ref("engine-voting/grafana/queue_metrics").once("value");
+    if (snap.exists()) baselineData = snap.val();
+  } catch (e) {}
+
+  const killTimer = setTimeout(() => process.exit(0), 58 * 1000);
 
   while (Date.now() - startTime < RUN_DURATION_MS) {
     const cycleStart = Date.now();
     try {
-      const results = await Promise.all(projects.map(async p => ({ project: p, data: await fetchProject(p) })));
-      const allDataWithDelta = {};
+      const BATCH_SIZE = 15;
+      const results = [];
+      for (let i = 0; i < projects.length; i += BATCH_SIZE) {
+        const batch = projects.slice(i, i + BATCH_SIZE);
+        const batchRes = await Promise.all(batch.map(async p => ({ project: p, data: await fetchProject(p) })));
+        results.push(...batchRes);
+      }
 
+      const allData = {};
       for (const { project, data } of results) {
         if (!data) continue;
         const processed = {};
-        
-        Object.keys(data).forEach(mName => {
-          const current = data[mName];
-          const baseline = baselineData[project] ? baselineData[project][mName] : null;
-          let delta = 0;
+        for (const mName of Object.keys(data)) {
+          const cur = data[mName];
+          const prev = (baselineData[project] && baselineData[project][mName]) ? baselineData[project][mName] : null;
+          const minuteDelta = prev ? cur.total - prev.total : 0;
+          const outflowDelta = prev ? cur.outflow - (prev.outflow || 0) : 0;
 
-          if (baseline && baseline.total !== null && current.total !== null) {
-            delta = current.total - baseline.total;
-            
-            // ⚠️ ALERT LOGIC: Drop > 5 pieces
-            const drop = baseline.total - current.total;
-            if (drop > 5 && !alertedSet.has(project)) {
-              const msg = `⚠️ ${project.toUpperCase()} Engine Voting Drop!\nPrevious: ${baseline.total}\nCurrent: ${current.total}\nDrop: -${drop}`;
-              sendTelegram(msg);
-              alertedSet.add(project);
-            }
+          processed[mName] = { ...cur, minuteDelta, outflowDelta };
+
+          // Alerts
+          if (mName === "Voting Engine" && minuteDelta < -15) {
+            await sendTelegram(`🚨 Voting Drop: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nQueue: ${cur.total}`, CHAT_NESTPT);
           }
-          processed[mName] = { ...current, minuteDelta: delta };
-        });
-        allDataWithDelta[project] = processed;
+          if (mName === "Voting Engine" && outflowDelta > 0) {
+            await sendTelegram(`✅ Voting Increase: ${project.toUpperCase()}\nAmount: +${outflowDelta}\nTotal Outflow: ${cur.outflow}`, CHAT_MONDELEZSE);
+          }
+        }
+        allData[project] = processed;
       }
 
-      await db.ref("engine-voting/grafana/queue_metrics").set({ ...allDataWithDelta, _lastUpdated: Date.now() });
-      console.log(`✅ Update complete: ${new Date().toLocaleTimeString()}`);
+      await db.ref("engine-voting/grafana/queue_metrics").set({ ...allData, _lastUpdated: Date.now() });
+      console.log(`✅ Updated: ${new Date().toLocaleTimeString()}`);
     } catch (e) { console.error("❌ Cycle error:", e.message); }
 
-    const waitTime = Math.max(1000, (cycleStart + INTERVAL_MS) - Date.now());
-    await new Promise(r => setTimeout(r, waitTime));
+    await new Promise(r => setTimeout(r, Math.max(1000, (cycleStart + INTERVAL_MS) - Date.now())));
   }
-  clearTimeout(hardKillTimer);
+  clearTimeout(killTimer);
   await admin.app().delete();
   process.exit(0);
 }
 
-main().catch(err => { console.error(err); process.exit(1); });
+main().catch(() => process.exit(1));
