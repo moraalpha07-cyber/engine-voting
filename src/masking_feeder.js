@@ -77,7 +77,13 @@ async function fetchProject(project) {
   try {
     const response = await fetch(GRAFANA_URL, {
       method: "POST",
-      headers: { "Cookie": `grafana_session=${SESSION_ID}`, "Content-Type": "application/x-www-form-urlencoded" },
+      headers: {
+        "Cookie": `grafana_session=${SESSION_ID}`,
+        "Content-Type": "application/x-www-form-urlencoded",
+        "x-grafana-org-id": "18",
+        "x-dashboard-id": "862",
+        "x-panel-id": "30"
+      },
       body: payload
     });
     if (!response.ok) return null;
