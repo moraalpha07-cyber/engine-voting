@@ -244,12 +244,16 @@ async function main() {
              const denoVal = denoObj ? (mName === "Masking Engine" ? denoObj.engine : denoObj.masking) : "-";
 
              if (minuteDelta < -15) {
+                let queueWarning = "";
+                if (cur.total > 100) queueWarning = " 🚨 (VERY HIGH)";
+                else if (cur.total > 50) queueWarning = " ⚠️ (HIGH)";
+
                 const msg = `<b>[${now}]</b>\n` +
                             `<b>${emoji} ${displayType} Alert:</b>\n\n` +
                             `<b>${project.toUpperCase()}${isPool ? " 🚫 (POOL - DO NOT WORK)" : ""}</b>\n\n` +
                             (isPool ? `<b>⚠️ POOL PROJECT - DO NOT TOUCH ⚠️</b>\n\n` : ``) +
                             `<code>Drop:          ${minuteDelta}</code>\n` +
-                            `<code>Current Queue: ${cur.total}</code>\n` +
+                            `<code>Current Queue: ${cur.total}${queueWarning}</code>\n` +
                             `<code>Deno:          ${denoVal}</code>\n` +
                             `<code>Outflow:       ${cur.outflow}</code>`;
                 await sendTelegram(msg, CHAT_NESTPT);

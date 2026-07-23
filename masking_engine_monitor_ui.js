@@ -368,13 +368,21 @@
                     opacity: 1;
                 }
                 .queue-high {
-    background: #45deff !important;
-    color: black !important;
-    padding: 2px 6px;
-    border-radius: 3px;
-    font-weight: 600;
-    box-shadow: 0 0 4px #d9534f;
-}
+                    background: #45deff !important;
+                    color: black !important;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    font-weight: 600;
+                    box-shadow: 0 0 4px #d9534f;
+                }
+                .queue-very-high {
+                    background: #ff4444 !important;
+                    color: white !important;
+                    padding: 2px 6px;
+                    border-radius: 3px;
+                    font-weight: 600;
+                    box-shadow: 0 0 4px #d9534f;
+                }
             </style>
 
             <div class="monitor-header">
@@ -551,6 +559,7 @@
             const statusClass = data.status;
             const displayName = getProjectDisplayName(project);
             const denoVal = (denominatorData[project] && denominatorData[project].engine) ? denominatorData[project].engine : '-';
+            const queueClass = data.queueCurrent > 100 ? 'queue-very-high' : (data.queueCurrent > 50 ? 'queue-high' : '');
 
             return `
         <tr>
@@ -560,7 +569,7 @@
             </td>
             <td class="${hiddenColumns.prev ? 'hidden' : ''}">${data.prev !== null ? data.prev : '-'}</td>
             <td class="${hiddenColumns.current ? 'hidden' : ''}"><span>${data.current !== null ? data.current : '-'}</span></td>
-            <td><span class="${queueDiffClass} ${data.queueCurrent > 50 ? 'queue-high' : ''}">${data.queueCurrent !== null ? data.queueCurrent : '-'}</span></td>
+            <td><span class="${queueDiffClass} ${queueClass}">${data.queueCurrent !== null ? data.queueCurrent : '-'}</span></td>
             <td>${denoVal}</td>
             <td><span class="${diffClass}">${data.diff > 0 ? '+' : ''}${data.diff}</span></td>
             <td>${data.lastUpdate}</td>
