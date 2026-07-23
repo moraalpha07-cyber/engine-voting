@@ -219,12 +219,10 @@ async function main() {
              if (minuteDelta < -15) {
                 const msg = `<b>[${now}]</b>\n` +
                             `<b>${emoji} ${displayType} Alert: ${project.toUpperCase()}</b>\n\n` +
-                            `<pre>` +
-                            `Drop:          ${minuteDelta}\n` +
-                            `Current Queue: ${cur.total}\n` +
-                            `Deno:          ${denoVal}\n` +
-                            `Outflow:       ${cur.outflow}` +
-                            `</pre>`;
+                            `<code>Drop:          ${minuteDelta}</code>\n` +
+                            `<code>Current Queue: ${cur.total}</code>\n` +
+                            `<code>Deno:          ${denoVal}</code>\n` +
+                            `<code>Outflow:       ${cur.outflow}</code>`;
                 await sendTelegram(msg, CHAT_NESTPT);
              }
           }
