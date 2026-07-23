@@ -52,6 +52,7 @@
     let realtimeUpdateInterval;
     let hideZeroDiff = true;
     let hiddenColumns = { prev: true, current: true };
+    let denominatorData = {};
 
     projects.forEach(project => {
         projectData[project] = {
@@ -426,6 +427,7 @@
                             <th class="hidden" id="prev-header" onclick="sortTable(1)">Prev ↕</th>
                             <th class="hidden" id="current-header" onclick="sortTable(2)">Current ↕</th>
                             <th onclick="sortTable(6)">Queue ↕</th>
+                            <th onclick="sortTable(7)">Deno ↕</th>
                             <th onclick="sortTable(3)">outflow ↕</th>
                             <th onclick="sortTable(4)">Updated ↕</th>
                             <th onclick="sortTable(5)">Time Ago ↕</th>
@@ -545,6 +547,8 @@
                 case 4: valueA = projectData[a].lastUpdate; valueB = projectData[b].lastUpdate; break;
                 case 5: valueA = projectData[a].lastUpdateTime || 0; valueB = projectData[b].lastUpdateTime || 0; break;
                 case 6: valueA = projectData[a].queueCurrent || 0; valueB = projectData[b].queueCurrent || 0; break;
+                case 7: valueA = (denominatorData[a] && denominatorData[a].engine) ? denominatorData[a].engine : 0;
+                        valueB = (denominatorData[b] && denominatorData[b].engine) ? denominatorData[b].engine : 0; break;
             }
 
             if (typeof valueA === 'string') {
@@ -561,6 +565,7 @@
             data.queueDiff < 0 ? 'diff-negative' : 'diff-zero';
             const statusClass = data.status;
             const displayName = getProjectDisplayName(project);
+            const denoVal = (denominatorData[project] && denominatorData[project].engine) ? denominatorData[project].engine : '-';
 
             return `
         <tr>
@@ -571,6 +576,7 @@
             <td class="${hiddenColumns.prev ? 'hidden' : ''}">${data.prev !== null ? data.prev : '-'}</td>
             <td class="${hiddenColumns.current ? 'hidden' : ''}"><span class="current-value" onclick="copyCurrentValue('${project}')">${data.current !== null ? data.current : '-'}</span></td>
             <td><span class="${queueDiffClass} ${data.queueCurrent > 300 ? 'queue-high' : ''} current-value" onclick="copyQueueValue('${project}')">${data.queueCurrent !== null ? data.queueCurrent : '-'}</span></td>
+            <td>${denoVal}</td>
             <td><span class="${diffClass}">${data.diff > 0 ? '+' : ''}${data.diff}</span></td>
             <td>${data.lastUpdate}</td>
             <td class="realtime-update">${getTimeSinceUpdate(data.lastUpdateTime)}</td>
@@ -800,6 +806,56 @@
         });
     }
 
+    function fetchDenominators() {
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vTeBLEp0p0cP2CNbrEx1NyKQYKJw-uo-TFNs_GHgcUrNEXYhA79LbC3r8gei8b_DcXbywiwRhzmEYCs/pub?gid=1191322481&single=true&output=csv",
+            onload: function(response) {
+                try {
+                    const csvText = response.responseText;
+                    const lines = csvText.split("\n");
+                    const temp = {};
+                    lines.forEach((line, index) => {
+                        if (index === 0) return;
+                        const row = parseCSVLine(line);
+                        if (row.length > 26) {
+                            const project = row[26].trim().toLowerCase();
+                            const maskingDeno = parseInt(row[5], 10) || 0;
+                            const engineDeno = parseInt(row[6], 10) || 0;
+                            if (project) {
+                                temp[project] = { masking: maskingDeno, engine: engineDeno };
+                            }
+                        }
+                    });
+                    denominatorData = temp;
+                    console.log("📊 Loaded denominators:", Object.keys(denominatorData).length);
+                    renderTable();
+                } catch (e) {
+                    console.error("❌ Failed to parse denominators CSV:", e);
+                }
+            }
+        });
+    }
+
+    function parseCSVLine(line) {
+        const result = [];
+        let current = "";
+        let inQuotes = false;
+        for (let i = 0; i < line.length; i++) {
+            const char = line[i];
+            if (char === '"') {
+                inQuotes = !inQuotes;
+            } else if (char === ',' && !inQuotes) {
+                result.push(current.trim());
+                current = "";
+            } else {
+                current += char;
+            }
+        }
+        result.push(current.trim());
+        return result;
+    }
+
     function fetchAllProjects() {
         projects.forEach(project => {
             fetchOutflow(project);
@@ -934,8 +990,10 @@
             populateVoiceOptions();
         }
 
+        fetchDenominators();
         fetchAllProjects();
         startAutoRefresh();
+        setInterval(fetchDenominators, 300000);
 
         console.log('🔍 Masking Engine Monitor UI initialized');
     }
