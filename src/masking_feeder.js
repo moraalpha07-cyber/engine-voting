@@ -163,10 +163,6 @@ async function main() {
                 const msg = `[${now}]\n🚨 ${displayType} Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${cur.total}\nOutflow: ${cur.outflow}`;
                 await sendTelegram(msg, CHAT_NESTPT);
              }
-             if (outflowDelta >= 5) {
-                const msg = `[${now}]\n✅ ${displayType} Increase: ${project.toUpperCase()}\nAmount: +${outflowDelta}\nTotal Outflow: ${cur.outflow}`;
-                await sendTelegram(msg, CHAT_NESTPT);
-             }
           }
         }
         allData[project] = processed;
