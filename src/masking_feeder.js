@@ -246,7 +246,7 @@ async function main() {
              if (minuteDelta < -15) {
                 const msg = `<b>[${now}]</b>\n` +
                             `<b>${emoji} ${displayType} Alert:</b>\n` +
-                            `<b>Project: ${project.toUpperCase()}${isPool ? " 🚫 (POOL - DO NOT WORK)" : ""}</b>\n` +
+                            `<b>${project.toUpperCase()}${isPool ? " 🚫 (POOL - DO NOT WORK)" : ""}</b>\n` +
                             (isPool ? `<b>⚠️ POOL PROJECT - DO NOT TOUCH ⚠️</b>\n\n` : `\n`) +
                             `<code>Drop:          ${minuteDelta}</code>\n` +
                             `<code>Current Queue: ${cur.total}</code>\n` +
