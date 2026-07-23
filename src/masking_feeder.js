@@ -7,9 +7,9 @@ const DATABASE_URL = process.env.FIREBASE_DATABASE_URL || "https://projectallow-
 const GRAFANA_URL = "https://monitor-public.trax-cloud.com/api/datasources/proxy/29/render";
 const SESSION_ID = process.env.GRAFANA_SESSION_ID;
 
-// 🔹 Telegram Config
-const TELEGRAM_TOKEN = "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
-const CHAT_NESTPT = "@NestPT";
+// 🔹 Telegram Config (Loaded from environment variables for security)
+const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
+const CHAT_NESTPT = process.env.TELEGRAM_CHAT_ID || "@NestPT";
 
 async function sendTelegram(msg, chatId) {
   const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(msg)}`;
