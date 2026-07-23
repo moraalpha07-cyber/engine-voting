@@ -217,25 +217,15 @@
                 }
 
                 .project-name {
-    font-weight: 500;
-    color: #5cb85c;
-    cursor: pointer;
-    position: relative;
-}
+                    font-weight: 600;
+                    color: #ffffff;
+                    position: relative;
+                }
 
-.project-name:hover {
-    color: #7dd87d;
-    text-decoration: underline;
-}
-
-.project-name.pool {
-    color: #ff4444;
-}
-
-.project-name.pool:hover {
-    color: #ff6666;
-    text-decoration: underline;
-}
+                .project-name.pool {
+                    color: #ff6666;
+                    font-weight: 600;
+                }
 
                 .current-value {
                     cursor: pointer;
@@ -571,11 +561,11 @@
         <tr>
             <td>
                 <span class="status-dot status-${statusClass}"></span>
-                <span class="project-name ${poolProjects.includes(project) ? 'pool' : ''}" onclick="copyProjectName('${project}')">${displayName}</span>
+                <span class="project-name ${poolProjects.includes(project) ? 'pool' : ''}">${displayName.toUpperCase()}</span>
             </td>
             <td class="${hiddenColumns.prev ? 'hidden' : ''}">${data.prev !== null ? data.prev : '-'}</td>
-            <td class="${hiddenColumns.current ? 'hidden' : ''}"><span class="current-value" onclick="copyCurrentValue('${project}')">${data.current !== null ? data.current : '-'}</span></td>
-            <td><span class="${queueDiffClass} ${data.queueCurrent > 50 ? 'queue-high' : ''} current-value" onclick="copyQueueValue('${project}')">${data.queueCurrent !== null ? data.queueCurrent : '-'}</span></td>
+            <td class="${hiddenColumns.current ? 'hidden' : ''}"><span>${data.current !== null ? data.current : '-'}</span></td>
+            <td><span class="${queueDiffClass} ${data.queueCurrent > 50 ? 'queue-high' : ''}">${data.queueCurrent !== null ? data.queueCurrent : '-'}</span></td>
             <td>${denoVal}</td>
             <td><span class="${diffClass}">${data.diff > 0 ? '+' : ''}${data.diff}</span></td>
             <td>${data.lastUpdate}</td>
