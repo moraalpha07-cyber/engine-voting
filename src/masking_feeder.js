@@ -209,6 +209,7 @@ async function main() {
           if (mName === "Masking Engine" || mName === "Masking") {
              const now = new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' });
              const displayType = mName === "Masking Engine" ? "Engine Masking" : "Regular Masking";
+             const emoji = mName === "Masking Engine" ? "🔴" : "🔵";
              
              // Get Deno Count
              const pKey = project.toLowerCase();
@@ -216,7 +217,7 @@ async function main() {
              const denoVal = denoObj ? (mName === "Masking Engine" ? denoObj.engine : denoObj.masking) : "-";
 
              if (minuteDelta < -15) {
-                const msg = `[${now}]\n🚨 ${displayType} Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${cur.total}\nDeno: ${denoVal}\nOutflow: ${cur.outflow}`;
+                const msg = `[${now}]\n${emoji} ${displayType} Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${cur.total}\nDeno: ${denoVal}\nOutflow: ${cur.outflow}`;
                 await sendTelegram(msg, CHAT_NESTPT);
              }
           }
