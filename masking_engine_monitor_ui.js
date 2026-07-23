@@ -575,7 +575,7 @@
             </td>
             <td class="${hiddenColumns.prev ? 'hidden' : ''}">${data.prev !== null ? data.prev : '-'}</td>
             <td class="${hiddenColumns.current ? 'hidden' : ''}"><span class="current-value" onclick="copyCurrentValue('${project}')">${data.current !== null ? data.current : '-'}</span></td>
-            <td><span class="${queueDiffClass} ${data.queueCurrent > 300 ? 'queue-high' : ''} current-value" onclick="copyQueueValue('${project}')">${data.queueCurrent !== null ? data.queueCurrent : '-'}</span></td>
+            <td><span class="${queueDiffClass} ${data.queueCurrent > 50 ? 'queue-high' : ''} current-value" onclick="copyQueueValue('${project}')">${data.queueCurrent !== null ? data.queueCurrent : '-'}</span></td>
             <td>${denoVal}</td>
             <td><span class="${diffClass}">${data.diff > 0 ? '+' : ''}${data.diff}</span></td>
             <td>${data.lastUpdate}</td>

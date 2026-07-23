@@ -12,7 +12,7 @@ const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "1623834999:AAH9kS6Y_R1
 const CHAT_NESTPT = process.env.TELEGRAM_CHAT_ID || "@NestPT";
 
 async function sendTelegram(msg, chatId) {
-  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(msg)}`;
+  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(msg)}&parse_mode=HTML`;
   try { await fetch(url); } catch (e) { console.error("❌ Telegram failed:", e.message); }
 }
 
@@ -217,7 +217,14 @@ async function main() {
              const denoVal = denoObj ? (mName === "Masking Engine" ? denoObj.engine : denoObj.masking) : "-";
 
              if (minuteDelta < -15) {
-                const msg = `[${now}]\n${emoji} ${displayType} Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${cur.total}\nDeno: ${denoVal}\nOutflow: ${cur.outflow}`;
+                const msg = `<b>[${now}]</b>\n` +
+                            `<b>${emoji} ${displayType} Alert: ${project.toUpperCase()}</b>\n\n` +
+                            `<pre>` +
+                            `Drop:          ${minuteDelta}\n` +
+                            `Current Queue: ${cur.total}\n` +
+                            `Deno:          ${denoVal}\n` +
+                            `Outflow:       ${cur.outflow}` +
+                            `</pre>`;
                 await sendTelegram(msg, CHAT_NESTPT);
              }
           }
