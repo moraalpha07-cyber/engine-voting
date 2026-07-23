@@ -16,6 +16,53 @@ async function sendTelegram(msg, chatId) {
   try { await fetch(url); } catch (e) { console.error("❌ Telegram failed:", e.message); }
 }
 
+let denominatorData = {};
+
+async function fetchDenominators() {
+  try {
+    const response = await fetch("https://docs.google.com/spreadsheets/d/e/2PACX-1vTeBLEp0p0cP2CNbrEx1NyKQYKJw-uo-TFNs_GHgcUrNEXYhA79LbC3r8gei8b_DcXbywiwRhzmEYCs/pub?gid=1191322481&single=true&output=csv");
+    if (!response.ok) return;
+    const csvText = await response.text();
+    const lines = csvText.split("\n");
+    const temp = {};
+    lines.forEach((line, index) => {
+      if (index === 0) return;
+      const row = parseCSVLine(line);
+      if (row.length > 26) {
+        const project = row[26].trim().toLowerCase();
+        const maskingDeno = parseInt(row[5], 10) || 0;
+        const engineDeno = parseInt(row[6], 10) || 0;
+        if (project) {
+          temp[project] = { masking: maskingDeno, engine: engineDeno };
+        }
+      }
+    });
+    denominatorData = temp;
+    console.log(`📊 Loaded ${Object.keys(denominatorData).length} denominators from Google Sheets.`);
+  } catch (e) {
+    console.error("❌ Failed to fetch denominators:", e.message);
+  }
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === ',' && !inQuotes) {
+      result.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  result.push(current.trim());
+  return result;
+}
+
 // 🔹 Firebase init
 if (!admin.apps.length) {
   admin.initializeApp({
@@ -119,6 +166,9 @@ async function main() {
     process.exit(0);
   }
 
+  // Fetch denominators from Google Sheets
+  await fetchDenominators();
+
   console.log("🚀 Starting Masking engine feeder...");
   const RUN_DURATION_MS = 55 * 1000;
   const INTERVAL_MS     = 5000;
@@ -159,8 +209,14 @@ async function main() {
           if (mName === "Masking Engine" || mName === "Masking") {
              const now = new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' });
              const displayType = mName === "Masking Engine" ? "Engine Masking" : "Regular Masking";
+             
+             // Get Deno Count
+             const pKey = project.toLowerCase();
+             const denoObj = denominatorData[pKey];
+             const denoVal = denoObj ? (mName === "Masking Engine" ? denoObj.engine : denoObj.masking) : "-";
+
              if (minuteDelta < -15) {
-                const msg = `[${now}]\n🚨 ${displayType} Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${cur.total}\nOutflow: ${cur.outflow}`;
+                const msg = `[${now}]\n🚨 ${displayType} Alert: ${project.toUpperCase()}\nDrop: ${minuteDelta}\nCurrent Queue: ${cur.total}\nDeno: ${denoVal}\nOutflow: ${cur.outflow}`;
                 await sendTelegram(msg, CHAT_NESTPT);
              }
           }
