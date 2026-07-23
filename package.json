@@ -1,0 +1,14 @@
+{
+  "name": "trax-firebase-feeder",
+  "version": "1.0.0",
+  "main": "src/fetchAndFeed.js",
+  "scripts": {
+    "start": "node src/masking_feeder.js",
+    "start-masking": "node src/masking_feeder.js"
+  },
+  "dependencies": {
+    "firebase-admin": "^11.11.0",
+    "node-fetch": "^2.7.0",
+    "dotenv": "^16.4.5"
+  }
+}
