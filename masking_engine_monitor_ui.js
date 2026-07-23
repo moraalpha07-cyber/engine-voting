@@ -35,12 +35,7 @@
         "ulbe", "ulbr", "ulde", "ules", "ulgr", "ulnl", "ulpt", "ulse", "unileverau", "unileverco", "unileverken", "unilevermx", "unileverus", "gskgr", "pernodus"
     ];
 
-    const poolProjects = [
-        "altriaus", "beiersdorfsp", "beiersdorfin", "beiersdorfchl", "beiersdorfco",
-        "cbcil", "cbcdairyil", "ccaau", "diageoca", "diageoco", "diageotw",
-        "diageous", "gsksg", "gskjp", "kibonbr", "munchysmy", "pepsicoes",
-        "pngbr", "pngmx", "pnghk", "sanofies", "sinoth", "odpngjp"
-    ];
+    let poolProjects = [];
 
    let projectData = {};
     let autoRefresh = true;
@@ -827,6 +822,35 @@
         });
     }
 
+    function fetchPoolProjects() {
+        GM_xmlhttpRequest({
+            method: "GET",
+            url: "https://docs.google.com/spreadsheets/d/e/2PACX-1vT0M1HNtH1Y52wgEL4iqU2bhbNwLlOHbkaT480tOWhCAsxxQNrXPuzDvNZb9sG2HhxR-NGmMAx6ceqL/pub?gid=0&single=true&output=csv",
+            onload: function(response) {
+                try {
+                    const csvText = response.responseText;
+                    const lines = csvText.split("\n");
+                    const temp = [];
+                    lines.forEach((line, index) => {
+                        if (index === 0) return;
+                        const row = parseCSVLine(line);
+                        if (row.length > 0) {
+                            const project = row[0].trim().toLowerCase();
+                            if (project) {
+                                temp.push(project);
+                            }
+                        }
+                    });
+                    poolProjects = temp;
+                    console.log("🏊 Loaded pool projects:", poolProjects.length);
+                    renderTable();
+                } catch (e) {
+                    console.error("❌ Failed to parse pool projects CSV:", e);
+                }
+            }
+        });
+    }
+
     function parseCSVLine(line) {
         const result = [];
         let current = "";
@@ -981,9 +1005,11 @@
         }
 
         fetchDenominators();
+        fetchPoolProjects();
         fetchAllProjects();
         startAutoRefresh();
         setInterval(fetchDenominators, 300000);
+        setInterval(fetchPoolProjects, 300000);
 
         console.log('🔍 Masking Engine Monitor UI initialized');
     }

@@ -17,6 +17,31 @@ async function sendTelegram(msg, chatId) {
 }
 
 let denominatorData = {};
+let poolProjects = new Set();
+
+async function fetchPoolProjects() {
+  try {
+    const response = await fetch("https://docs.google.com/spreadsheets/d/e/2PACX-1vT0M1HNtH1Y52wgEL4iqU2bhbNwLlOHbkaT480tOWhCAsxxQNrXPuzDvNZb9sG2HhxR-NGmMAx6ceqL/pub?gid=0&single=true&output=csv");
+    if (!response.ok) return;
+    const csvText = await response.text();
+    const lines = csvText.split("\n");
+    const temp = new Set();
+    lines.forEach((line, index) => {
+      if (index === 0) return;
+      const row = parseCSVLine(line);
+      if (row.length > 0) {
+        const project = row[0].trim().toLowerCase();
+        if (project) {
+          temp.add(project);
+        }
+      }
+    });
+    poolProjects = temp;
+    console.log(`🏊 Loaded ${poolProjects.size} pool projects from Google Sheets.`);
+  } catch (e) {
+    console.error("❌ Failed to fetch pool projects:", e.message);
+  }
+}
 
 async function fetchDenominators() {
   try {
@@ -168,6 +193,7 @@ async function main() {
 
   // Fetch denominators from Google Sheets
   await fetchDenominators();
+  await fetchPoolProjects();
 
   console.log("🚀 Starting Masking engine feeder...");
   const RUN_DURATION_MS = 55 * 1000;
@@ -209,7 +235,8 @@ async function main() {
           if (mName === "Masking Engine" || mName === "Masking") {
              const now = new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' });
              const displayType = mName === "Masking Engine" ? "Engine Masking" : "Regular Masking";
-             const emoji = mName === "Masking Engine" ? "🔴" : "🔵";
+             const isPool = poolProjects.has(project.toLowerCase());
+             const emoji = isPool ? "🚫" : (mName === "Masking Engine" ? "🔴" : "🔵");
              
              // Get Deno Count
              const pKey = project.toLowerCase();
@@ -219,7 +246,8 @@ async function main() {
              if (minuteDelta < -15) {
                 const msg = `<b>[${now}]</b>\n` +
                             `<b>${emoji} ${displayType} Alert:</b>\n` +
-                            `<b>Project: ${project.toUpperCase()}</b>\n\n` +
+                            `<b>Project: ${project.toUpperCase()}${isPool ? " 🚫 (POOL - DO NOT WORK)" : ""}</b>\n` +
+                            (isPool ? `<b>⚠️ POOL PROJECT - DO NOT TOUCH ⚠️</b>\n\n` : `\n`) +
                             `<code>Drop:          ${minuteDelta}</code>\n` +
                             `<code>Current Queue: ${cur.total}</code>\n` +
                             `<code>Deno:          ${denoVal}</code>\n` +
