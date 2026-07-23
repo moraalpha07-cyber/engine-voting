@@ -818,10 +818,10 @@
                     lines.forEach((line, index) => {
                         if (index === 0) return;
                         const row = parseCSVLine(line);
-                        if (row.length > 26) {
-                            const project = row[26].trim().toLowerCase();
-                            const maskingDeno = parseInt(row[5], 10) || 0;
-                            const engineDeno = parseInt(row[6], 10) || 0;
+                        if (row.length > 6) {
+                            const project = row[0].trim().toLowerCase();
+                            const maskingDeno = parseFloat(row[5]) || 0;
+                            const engineDeno = parseFloat(row[6]) || 0;
                             if (project) {
                                 temp[project] = { masking: maskingDeno, engine: engineDeno };
                             }
