@@ -218,7 +218,8 @@ async function main() {
 
              if (minuteDelta < -15) {
                 const msg = `<b>[${now}]</b>\n` +
-                            `<b>${emoji} ${displayType} Alert: ${project.toUpperCase()}</b>\n\n` +
+                            `<b>${emoji} ${displayType} Alert:</b>\n` +
+                            `<b>Project: ${project.toUpperCase()}</b>\n\n` +
                             `<code>Drop:          ${minuteDelta}</code>\n` +
                             `<code>Current Queue: ${cur.total}</code>\n` +
                             `<code>Deno:          ${denoVal}</code>\n` +
