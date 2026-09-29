@@ -1,13 +1,18 @@
 require("dotenv").config();
 const fetch = require("node-fetch");
 
-const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
+const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_NESTPT = process.env.TELEGRAM_CHAT_ID || "@NestPT";
 
 async function testTelegram() {
   console.log("🔍 Testing Telegram Bot Connection...");
   console.log("🤖 Bot Token:", TELEGRAM_TOKEN ? TELEGRAM_TOKEN.slice(0, 10) + "..." : "NOT SET");
   console.log("📢 Chat ID:", CHAT_NESTPT);
+
+  if (!TELEGRAM_TOKEN) {
+    console.error("❌ ERROR: TELEGRAM_BOT_TOKEN is not set in .env!");
+    return;
+  }
 
   try {
     const meRes = await fetch(`https://api.telegram.org/bot${TELEGRAM_TOKEN}/getMe`);

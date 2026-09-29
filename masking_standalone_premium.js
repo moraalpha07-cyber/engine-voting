@@ -3,7 +3,7 @@
 // @namespace    http://tampermonkey.net/
 // @version      3.0
 // @description  Premium Masking Monitor with Outflow, Queue Diff (Adu Wena Gaana), and Telegram Alerts.
-// @author       Dharana & Antigravity
+// @author       Community
 // @match        https://monitor-public.trax-cloud.com/d/h5yrZ7zWk/selector-aws-prod*
 // @grant        GM_addStyle
 // @require      https://code.jquery.com/jquery-3.6.0.min.js
@@ -39,7 +39,8 @@
         "pngbr", "pngmx", "pnghk", "sanofies", "sinoth", "odpngjp"
     ];
 
-    const TELEGRAM_URL = "https://api.telegram.org/bot1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA/sendMessage";
+    const BOT_TOKEN = "YOUR_TELEGRAM_BOT_TOKEN";
+    const TELEGRAM_URL = `https://api.telegram.org/bot${BOT_TOKEN}/sendMessage`;
     const CHAT_ID = "@NestPT";
 
     let projectData = {};

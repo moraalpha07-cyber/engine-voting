@@ -4,36 +4,47 @@ const admin = require("firebase-admin");
 
 // 🔹 Config
 const DATABASE_URL = process.env.FIREBASE_DATABASE_URL || "https://projectallow-default-rtdb.firebaseio.com/";
-const GRAFANA_URL = "https://monitor.trax-cloud.com/api/datasources/proxy/29/render";
+const GRAFANA_URL = process.env.GRAFANA_URL || "https://monitor-public.trax-cloud.com/api/datasources/proxy/29/render";
 const SESSION_ID = process.env.GRAFANA_SESSION_ID;
 
 // 🔹 Validate Secrets
-if (!process.env.FIREBASE_SERVICE_ACCOUNT) {
-  console.error("❌ ERROR: FIREBASE_SERVICE_ACCOUNT is missing!");
-  process.exit(1);
-}
-
 if (!SESSION_ID) {
   console.error("❌ ERROR: GRAFANA_SESSION_ID is missing!");
   process.exit(1);
 }
 
-// 🔹 Firebase init
-let serviceAccount;
-try {
-  serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-} catch (e) {
-  console.error("❌ ERROR: FIREBASE_SERVICE_ACCOUNT is not a valid JSON string!");
-  process.exit(1);
+function getFirebaseCredentials() {
+  const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (!sa) {
+    const possibleFiles = ["service-account.json", "serviceAccountKey.json", "firebase-service-account.json"];
+    for (const f of possibleFiles) {
+      const p = require("path").resolve(process.cwd(), f);
+      if (require("fs").existsSync(p)) {
+        return JSON.parse(require("fs").readFileSync(p, "utf-8"));
+      }
+    }
+    return null;
+  }
+  const resolvedPath = require("path").resolve(process.cwd(), sa);
+  if (require("fs").existsSync(resolvedPath)) {
+    return JSON.parse(require("fs").readFileSync(resolvedPath, "utf-8"));
+  }
+  try {
+    return JSON.parse(sa);
+  } catch (e) {
+    return null;
+  }
 }
 
-if (!admin.apps.length) {
+// 🔹 Firebase init
+const creds = getFirebaseCredentials();
+if (creds && !admin.apps.length) {
   admin.initializeApp({
-    credential: admin.credential.cert(serviceAccount),
+    credential: admin.credential.cert(creds),
     databaseURL: DATABASE_URL
   });
 }
-const db = admin.database();
+const db = admin.apps.length ? admin.database() : null;
 
 const projects = [
   "abinbevbr", "abnz", "altriaus", "altriausdemo", "aneuae", "avidityuk", "batru", "bdftr", "beiersdorfar", "beiersdorfau", "beiersdorfbe", "beiersdorfbo", "beiersdorfbr", "beiersdorfchl", "beiersdorfco", "beiersdorfcz", "beiersdorfde", "beiersdorfec", "beiersdorfeg", "beiersdorffr", "beiersdorfgr", "beiersdorfgt", "beiersdorfid", "beiersdorfin", "beiersdorfit", "beiersdorfke", "beiersdorfkz", "beiersdorfmx", "beiersdorfmy", "beiersdorfng", "beiersdorfnz", "beiersdorfpe", "beiersdorfph", "beiersdorfpl", "beiersdorfpt", "beiersdorfpy", "beiersdorfro", "beiersdorfru", "beiersdorfsa", "beiersdorfse", "beiersdorfsp", "beiersdorfth", "beiersdorftw", "beiersdorfuae", "beiersdorfuk", "beiersdorfvn", "beiersdorfza", "bepensamx", "bikr", "bimboes", "bimbomx", "bimbous", "biph", "biseask", "bivn", "bluetritonusa", "cbcdairyil", "cbcil", "ccaau", "ccandinaar", "ccanz", "ccbr-prod", "ccjp", "ccjpvm", "cckh", "cckr", "cclibertyus", "ccphl", "ccusdemo", "ccza", "colgatelatam", "Comon", "cpgdemo", "danonear", "danonejp", "danoneuk", "deltafoodsgr", "diageoar", "diageoau", "diageobaltics", "diageobenelux", "diageobr", "diageoca", "diageoco", "diageoes", "diageoga", "diageogh", "diageogr", "diageogtr", "diageogtrassetpilot", "diageoid", "diageoie", "diageoiedemo", "diageoin", "diageoit", "diageojp", "diageoke", "diageokr", "diageomx", "diageong", "diageopa", "diageopebac", "diageoph", "diageopl", "diageopt", "diageoromania", "diageosc", "diageosg", "diageostr", "diageoth", "diageotw", "diageotz", "diageoug", "diageouk", "diageous", "diageovn", "diageoza", "dkshmy", "dlcpt", "dollargeneraldmxus", "dreyerus", "Edit Menu", "Edit Normal", "FactpharmaBE", "fapharmabe", "fapharmafr", "fazerfi", "femsaar", "femsamx", "ferreroid", "ferreromy", "ferreroph", "ferrerosg", "ferreroth", "ferrerovn", "fonterralk", "frucorau", "frucornz", "gdsar", "gmilac", "gmkr", "googlehk", "googlekr", "googlemx", "googleusa", "gpus", "gskau", "gskbg", "gskch", "gskcz", "gskde", "gskes", "gskesph", "gskfi", "gskglobal", "gskgr", "gskhu", "gskjp", "gskkz", "gsklt", "gsknz", "gskpl", "gskro", "gskruph", "gsksg", "gsksk", "gsktw", "gskua", "gskuz", "gskza", "haleonaesa", "haleonbr", "HALEONHU", "haleonil", "haleonmy", "haleonse", "haleonvn", "heinekenbr", "heinekentw", "heinzcr", "henkeltr", "hersheysusdemo", "hphoodus", "inbevci", "inbevnl", "intagejp2", "jdetr", "jdeza", "jnjanz", "jtiglobal", "jtihr", "jtimg", "jtiro", "jtisl", "jtius", "jtjp", "kenvuelatam", "kibonbr", "kirinjp", "labattplnoptca", "LIGA", "lightpilotdemo", "lionnz", "markanthonygroupus", "marsbh", "marsegy", "marskw", "marsmx", "marsom", "marspl", "marsqa", "marssa", "marstr", "marsuae", "marsuk", "mdlzdk", "mdlzrusf", "MENU", "moethennessyar", "moethennessyus", "molsoncoorsuk", "mondelezau", "mondelezaz", "mondelezca", "mondelezde", "mondelezdmius", "mondelezeg", "mondelezes", "mondelezfi1", "mondelezge", "mondelezkaza", "mondelezmy", "mondelezno", "mondelezprt", "mondelezsa", "mondelezse", "mondelezsg", "mondeleztr", "mondelezukre", "mondelezusps", "mondelezusquality", "mondelezuz", "mondelezza", "munchysmy", "newellus", "nrfbodycare", "nrfleaftea", "nrfsoftdrinks", "odcbcil", "odccbr-prod", "oddiageoiedemo", "odmondelezukre", "odmondelezusps", "odnrfbodycare", "odnrfleaftea", "odnrfsoftdrinks", "odpngjp", "odstraussdryil", "odtempoil", "odulpt", "odunileveril", "odunilevermx", "odunileverus", "penaflorar", "pepsibe", "pepsicoes", "pepsicofr", "pepsicopl", "pepsicotr", "pepsicouk", "pepside", "pepsidemoglobal", "pepsigt", "pernodin", "pernodricardes", "pernodus", "pgbaltics2", "pgcroatia", "pgcz", "pges", "pgespharma", "pghu", "pgpl", "pgpt", "pgsk", "pgua", "pngbr", "pngcn-prod", "pnghk", "pngjp", "pngmx", "pngvn", "pngza2", "pureaidemoamer", "pureaidemoapac", "pureaidemoemea", "refriangoao", "rinielsen2", "risparkwinede", "rjreynoldsus", "sanofiae", "sanofiar", "sanofiat", "sanofiau", "sanofibe", "sanofibr", "sanofich", "sanofico", "sanoficz", "sanofide", "sanofiec", "sanofieg", "sanofies", "sanofifr", "sanofigr", "sanofihu", "sanofiit", "sanofijp", "sanofimx", "sanofipl", "sanofipt", "sanofiro", "sanofiru", "sanofisa", "sanofitr", "sanofiua", "schwartautkde", "scjohnsonar", "scjohnsonbr", "sindicatedmx", "sinoth", "sksignals", "solarbr", "straussdryil", "straussfritolayil", "straussil", "suntoryjp2", "teamcorelatam", "tempoil", "tevade", "tevapl", "tevaru", "tnuvailv2", "traxtobaccous", "tuborgro", "ulbe", "ulbr", "ulde", "ules", "ulgr", "ulit", "ulnl", "ulpt", "ulse", "uluk", "unileverau", "unileverco", "unileveril", "unileverken", "unileverlk", "unilevermx", "unilevernz", "unileverus", "yalolatam"
@@ -71,10 +82,11 @@ function fetchWithTimeout(url, options, timeoutMs = 8000) {
 }
 
 // 🔹 Telegram Alert Config
-const TELEGRAM_BOT_TOKEN = "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
-const CHAT_ID = "@MONDELEZSE";
+const TELEGRAM_BOT_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
+const CHAT_ID = process.env.TELEGRAM_CHAT_ID;
 
 async function sendTelegram(msg) {
+  if (!TELEGRAM_BOT_TOKEN || !CHAT_ID) return;
   const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage?chat_id=${CHAT_ID}&text=${encodeURIComponent(msg)}`;
   try { await fetch(url); } catch (e) { console.error("❌ Telegram failed:", e.message); }
 }
@@ -133,14 +145,13 @@ async function fetchProject(project) {
 async function main() {
   console.log("🚀 Starting fetch cycle (Voting + Trax)...");
 
-  const RUN_DURATION_MS = 55 * 1000;
-  const startTime = Date.now();
   let baselineData = {};
-  
-  try {
-    const snapshot = await db.ref("trax/queue_metrics").once("value");
-    if (snapshot.exists()) baselineData = snapshot.val();
-  } catch (err) {}
+  if (db) {
+    try {
+      const snapshot = await db.ref("trax/queue_metrics").once("value");
+      if (snapshot.exists()) baselineData = snapshot.val();
+    } catch (err) {}
+  }
 
   const hardKillTimer = setTimeout(() => process.exit(0), 58 * 1000);
 
@@ -166,20 +177,20 @@ async function main() {
         const outflowDelta = prev ? current.outflow - (prev.outflow || 0) : 0;
 
         processedData[mName] = { ...current, minuteDelta, outflowDelta };
-
-
       }
       allData[project] = processedData;
     }
 
-    await db.ref("trax/queue_metrics").set({ ...allData, _lastUpdated: Date.now() });
+    if (db) {
+      await db.ref("trax/queue_metrics").set({ ...allData, _lastUpdated: Date.now() });
+    }
     console.log(`✅ Updated successfully.`);
   } catch (e) {
     console.error("❌ Execution error:", e.message);
   }
 
   clearTimeout(hardKillTimer);
-  await admin.app().delete();
+  if (db && admin.apps.length) await admin.app().delete();
   process.exit(0);
 }
 
