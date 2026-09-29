@@ -1,19 +1,170 @@
 require("dotenv").config();
 const fetch = require("node-fetch");
 const admin = require("firebase-admin");
+const fs = require("fs");
+const path = require("path");
 
 // 🔹 Config
-const DATABASE_URL = process.env.FIREBASE_DATABASE_URL || "https://projectallow-default-rtdb.firebaseio.com/";
-const GRAFANA_URL = "https://monitor-public.trax-cloud.com/api/datasources/proxy/29/render";
-const SESSION_ID = process.env.GRAFANA_SESSION_ID;
+const DATABASE_URL = (process.env.FIREBASE_DATABASE_URL || "https://projectallow-default-rtdb.firebaseio.com/").replace(/\/$/, "");
+const GRAFANA_URL = process.env.GRAFANA_URL || "https://monitor-public.trax-cloud.com/api/datasources/proxy/29/render";
+const GRAFANA_LOGIN_URL = process.env.GRAFANA_LOGIN_URL || "https://monitor-public.trax-cloud.com/login";
 
-// 🔹 Telegram Config (Loaded from environment variables for security)
+let SESSION_ID = process.env.GRAFANA_SESSION_ID;
+const GRAFANA_USER = process.env.GRAFANA_USERNAME || "gss.kurunegala@gssintl.biz";
+const GRAFANA_PASS = process.env.GRAFANA_PASSWORD || "Gssk@2021";
+
+// 🔹 Telegram Config
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
 const CHAT_NESTPT = process.env.TELEGRAM_CHAT_ID || "@NestPT";
 
-async function sendTelegram(msg, chatId) {
-  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(msg)}&parse_mode=HTML`;
-  try { await fetch(url); } catch (e) { console.error("❌ Telegram failed:", e.message); }
+// 🔹 Continuous mode
+const isContinuous = process.env.CONTINUOUS_MODE === "true" || process.argv.includes("--continuous");
+
+// 🔹 Helper: Send Telegram Alert
+async function sendTelegram(msg, chatId = CHAT_NESTPT) {
+  if (!TELEGRAM_TOKEN || !chatId) {
+    console.error("❌ Telegram Bot Token or Chat ID is missing!");
+    return;
+  }
+  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: msg,
+        parse_mode: "HTML"
+      })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      console.error(`❌ Telegram API Error (${chatId}): ${data.description} (Error code: ${data.error_code})`);
+    } else {
+      console.log(`📱 Telegram alert delivered to ${chatId} (Msg ID: ${data.result.message_id})`);
+    }
+  } catch (e) {
+    console.error("❌ Telegram request failed:", e.message);
+  }
+}
+
+// 🔹 Auto-login to Grafana to get fresh session cookie
+async function loginToGrafana() {
+  if (!GRAFANA_USER || !GRAFANA_PASS) {
+    console.warn("⚠️ Cannot auto-login: GRAFANA_USERNAME or GRAFANA_PASSWORD missing.");
+    return null;
+  }
+  console.log("🔐 Logging in to Grafana as:", GRAFANA_USER);
+  try {
+    const res = await fetch(GRAFANA_LOGIN_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        user: GRAFANA_USER,
+        email: GRAFANA_USER,
+        password: GRAFANA_PASS
+      }),
+      redirect: "manual"
+    });
+
+    const cookies = res.headers.raw()['set-cookie'] || [];
+    let sessionCookie = null;
+    cookies.forEach(c => {
+      const match = c.match(/grafana_session=([^;]+)/);
+      if (match) {
+        sessionCookie = match[1];
+      }
+    });
+
+    if (sessionCookie) {
+      console.log("🎉 Successfully acquired new Grafana session cookie!");
+      SESSION_ID = sessionCookie;
+      return sessionCookie;
+    } else {
+      console.error("❌ Grafana login did not return a session cookie. Status:", res.status);
+      return null;
+    }
+  } catch (e) {
+    console.error("❌ Grafana auto-login error:", e.message);
+    return null;
+  }
+}
+
+// 🔹 Helper: Load Firebase credentials safely
+function getFirebaseCredentials() {
+  const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (!sa) {
+    const possibleFiles = ["service-account.json", "serviceAccountKey.json", "firebase-service-account.json"];
+    for (const f of possibleFiles) {
+      const p = path.resolve(process.cwd(), f);
+      if (fs.existsSync(p)) {
+        console.log(`📁 Found Firebase Service Account file: ${f}`);
+        return JSON.parse(fs.readFileSync(p, "utf-8"));
+      }
+    }
+    return null;
+  }
+  const resolvedPath = path.resolve(process.cwd(), sa);
+  if (fs.existsSync(resolvedPath)) {
+    return JSON.parse(fs.readFileSync(resolvedPath, "utf-8"));
+  }
+  try {
+    return JSON.parse(sa);
+  } catch (e) {
+    try {
+      return JSON.parse(sa.replace(/\\n/g, "\n"));
+    } catch (e2) {
+      return null;
+    }
+  }
+}
+
+let db = null;
+const creds = getFirebaseCredentials();
+if (creds) {
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert(creds),
+      databaseURL: DATABASE_URL
+    });
+  }
+  db = admin.database();
+  console.log("🔥 Firebase Admin SDK initialized.");
+} else {
+  console.log("🔥 Using Firebase Realtime Database REST API (Direct Access).");
+}
+
+// 🔹 Helper: Read / Write to Firebase Database
+async function readFirebaseBaseline() {
+  if (db) {
+    try {
+      const snap = await db.ref("masking/grafana/queue_metrics").once("value");
+      if (snap.exists()) return snap.val();
+    } catch (e) {}
+  }
+  try {
+    const res = await fetch(`${DATABASE_URL}/masking/grafana/queue_metrics.json`);
+    if (res.ok) {
+      const data = await res.json();
+      return data || {};
+    }
+  } catch (e) {}
+  return {};
+}
+
+async function writeFirebaseMetrics(data) {
+  if (db) {
+    await db.ref("masking/grafana/queue_metrics").set(data);
+    return;
+  }
+  const res = await fetch(`${DATABASE_URL}/masking/grafana/queue_metrics.json`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data)
+  });
+  if (!res.ok) {
+    console.error("❌ Firebase REST write failed with status:", res.status);
+  }
 }
 
 let denominatorData = {};
@@ -88,15 +239,6 @@ function parseCSVLine(line) {
   return result;
 }
 
-// 🔹 Firebase init
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)),
-    databaseURL: DATABASE_URL
-  });
-}
-const db = admin.database();
-
 const projects = [
   "abinbevbr", "abnz", "altriaus", "altriausdemo", "aneuae", "avidityuk", "batru", "bdftr", "beiersdorfar", "beiersdorfau", "beiersdorfbe", "beiersdorfbo", "beiersdorfbr", "beiersdorfchl",
   "beiersdorfco", "beiersdorfcz", "beiersdorfde", "beiersdorfec", "beiersdorfeg", "beiersdorffr", "beiersdorfgr", "beiersdorfgt", "beiersdorfid", "beiersdorfin", "beiersdorfit", "beiersdorfke",
@@ -137,7 +279,14 @@ const metrics = [
   { path: "masking",                name: "Masking" }
 ];
 
+let grafanaAuthError = false;
+
 async function fetchProject(project) {
+  if (!SESSION_ID) {
+    await loginToGrafana();
+    if (!SESSION_ID) return null;
+  }
+
   const payloadParts = [];
   metrics.forEach(m => {
     payloadParts.push(`target=alias(prod.gauges.selector.queue.${m.path}.${project}.total,'${m.name} - Total')`);
@@ -158,16 +307,31 @@ async function fetchProject(project) {
       },
       body: payload
     });
+
+    if (response.status === 401 || response.status === 403) {
+      if (!grafanaAuthError) {
+        console.warn(`⚠️ Grafana session expired. Attempting auto-login...`);
+        grafanaAuthError = true;
+        await loginToGrafana();
+        grafanaAuthError = false;
+      }
+      return null;
+    }
+
     if (!response.ok) return null;
+
     const json = await response.json();
+    if (!Array.isArray(json)) return null;
+
     const groupedData = {};
     json.forEach(series => {
+      if (!series || !series.datapoints) return;
       const dp = series.datapoints.filter(d => d[0] !== null);
       if (dp.length > 0) {
         const last = dp[dp.length - 1];
-        const isOutflow = series.target.includes("Outflow");
-        const isOldest = series.target.includes("Oldest Task");
-        const mName = series.target.split(" - ")[0];
+        const isOutflow = series.target && series.target.includes("Outflow");
+        const isOldest = series.target && series.target.includes("Oldest Task");
+        const mName = series.target ? series.target.split(" - ")[0] : "Unknown";
 
         if (!groupedData[mName]) groupedData[mName] = { lastUpdated: last[1]*1000, total: 0, oldestTask: 0, outflow: 0 };
         if (isOutflow) groupedData[mName].outflow = last[0];
@@ -176,37 +340,42 @@ async function fetchProject(project) {
       }
     });
     return groupedData;
-  } catch (e) { return null; }
+  } catch (e) {
+    return null;
+  }
 }
 
 async function main() {
-  const colomboHour = parseInt(new Intl.DateTimeFormat('en-US', {
-    timeZone: 'Asia/Colombo',
-    hour: 'numeric',
-    hour12: false
-  }).format(new Date()), 10);
+  const enforceTime = process.env.ENFORCE_ACTIVE_HOURS === "true";
+  if (enforceTime) {
+    const colomboHour = parseInt(new Intl.DateTimeFormat('en-US', {
+      timeZone: 'Asia/Colombo',
+      hour: 'numeric',
+      hour12: false
+    }).format(new Date()), 10);
 
-  if (colomboHour < 6 || colomboHour >= 23) {
-    console.log(`⏰ Current Colombo hour is ${colomboHour}. Outside active hours (6 AM - 11 PM). Exiting.`);
-    process.exit(0);
+    if (colomboHour < 6 || colomboHour >= 23) {
+      console.log(`⏰ Current Colombo hour is ${colomboHour}. Outside active hours (6 AM - 11 PM). Exiting.`);
+      process.exit(0);
+    }
   }
 
-  // Fetch denominators from Google Sheets
+  // Ensure valid Grafana session before loop
+  if (!SESSION_ID) {
+    await loginToGrafana();
+  }
+
+  // Fetch denominators & pool projects from Google Sheets
   await fetchDenominators();
   await fetchPoolProjects();
 
-  console.log("🚀 Starting Masking engine feeder...");
-  const RUN_DURATION_MS = 55 * 1000;
+  console.log(`🚀 Starting Masking engine feeder (Mode: ${isContinuous ? "Continuous" : "Single 55s Run"})...`);
+  const RUN_DURATION_MS = isContinuous ? Infinity : (55 * 1000);
   const INTERVAL_MS     = 5000;
   const startTime = Date.now();
-  let baselineData = {};
+  let baselineData = await readFirebaseBaseline();
 
-  try {
-    const snap = await db.ref("masking/grafana/queue_metrics").once("value");
-    if (snap.exists()) baselineData = snap.val();
-  } catch (e) {}
-
-  const killTimer = setTimeout(() => process.exit(0), 58 * 1000);
+  const killTimer = !isContinuous ? setTimeout(() => process.exit(0), 58 * 1000) : null;
 
   while (Date.now() - startTime < RUN_DURATION_MS) {
     const cycleStart = Date.now();
@@ -219,9 +388,11 @@ async function main() {
         results.push(...batchRes);
       }
 
+      let validCount = 0;
       const allData = {};
       for (const { project, data } of results) {
-        if (!data) continue;
+        if (!data || Object.keys(data).length === 0) continue;
+        validCount++;
         const processed = {};
         for (const mName of Object.keys(data)) {
           const cur = data[mName];
@@ -262,6 +433,7 @@ async function main() {
                             `<code>Current Queue: ${cur.total}${queueWarning}</code>\n` +
                             `<code>Deno:          ${denoVal}${denoPrefixOrSuffix}</code>\n` +
                             `<code>Outflow:       ${cur.outflow}</code>`;
+                console.log(`🚨 Alert sent for ${project} (${mName})! Drop: ${minuteDelta}`);
                 await sendTelegram(msg, CHAT_NESTPT);
              }
           }
@@ -269,16 +441,28 @@ async function main() {
         allData[project] = processed;
       }
 
-      await db.ref("masking/grafana/queue_metrics").set({ ...allData, _lastUpdated: Date.now() });
-      baselineData = allData; // 🔹 Update baseline to prevent duplicate alerts
-      console.log(`✅ Updated: ${new Date().toLocaleTimeString()}`);
-    } catch (e) { console.error("❌ Cycle error:", e.message); }
+      if (validCount > 0) {
+        await writeFirebaseMetrics({ ...allData, _lastUpdated: Date.now() });
+        baselineData = allData;
+        console.log(`✅ [${new Date().toLocaleTimeString()}] Updated Firebase with ${validCount} active projects.`);
+      } else {
+        console.warn(`⚠️ [${new Date().toLocaleTimeString()}] No data received from Grafana.`);
+      }
+    } catch (e) {
+      console.error("❌ Cycle error:", e.message);
+    }
 
-    await new Promise(r => setTimeout(r, Math.max(1000, (cycleStart + INTERVAL_MS) - Date.now())));
+    const elapsed = Date.now() - cycleStart;
+    const sleepTime = Math.max(1000, INTERVAL_MS - elapsed);
+    await new Promise(r => setTimeout(r, sleepTime));
   }
-  clearTimeout(killTimer);
-  await admin.app().delete();
+
+  if (killTimer) clearTimeout(killTimer);
+  if (db && admin.apps.length) await admin.app().delete();
   process.exit(0);
 }
 
-main().catch(() => process.exit(1));
+main().catch(err => {
+  console.error("❌ Fatal Error:", err);
+  process.exit(1);
+});

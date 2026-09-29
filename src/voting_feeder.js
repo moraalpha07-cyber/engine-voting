@@ -1,30 +1,88 @@
 require("dotenv").config();
 const fetch = require("node-fetch");
 const admin = require("firebase-admin");
+const fs = require("fs");
+const path = require("path");
 
 // 🔹 Config
 const DATABASE_URL = process.env.FIREBASE_DATABASE_URL || "https://projectallow-default-rtdb.firebaseio.com/";
-const GRAFANA_URL = "https://monitor.trax-cloud.com/api/datasources/proxy/29/render";
+const GRAFANA_URL = process.env.GRAFANA_URL || "https://monitor.trax-cloud.com/api/datasources/proxy/29/render";
 const SESSION_ID = process.env.GRAFANA_SESSION_ID;
 
 // 🔹 Telegram Config
-const TELEGRAM_TOKEN = "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
-const CHAT_NESTPT = "@NestPT";
-const CHAT_MONDELEZSE = "@MONDELEZSE";
+const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
+const CHAT_NESTPT = process.env.TELEGRAM_CHAT_ID || "@NestPT";
+const CHAT_MONDELEZSE = process.env.TELEGRAM_CHAT_ID_MONDELEZ || "@MONDELEZSE";
+
+const isContinuous = process.env.CONTINUOUS_MODE === "true" || process.argv.includes("--continuous");
 
 async function sendTelegram(msg, chatId) {
-  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage?chat_id=${chatId}&text=${encodeURIComponent(msg)}&parse_mode=HTML`;
-  try { await fetch(url); } catch (e) { console.error("❌ Telegram failed:", e.message); }
+  if (!TELEGRAM_TOKEN || !chatId) {
+    console.error("❌ Telegram Token or Chat ID is missing!");
+    return;
+  }
+  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
+  try {
+    const res = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: msg,
+        parse_mode: "HTML"
+      })
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      console.error(`❌ Telegram failed for ${chatId}:`, data.description);
+    } else {
+      console.log(`📱 Telegram alert sent to ${chatId}`);
+    }
+  } catch (e) {
+    console.error("❌ Telegram failed:", e.message);
+  }
 }
 
-// 🔹 Firebase init
-if (!admin.apps.length) {
-  admin.initializeApp({
-    credential: admin.credential.cert(JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)),
-    databaseURL: DATABASE_URL
-  });
+function getFirebaseCredentials() {
+  const sa = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (!sa) {
+    const possibleFiles = ["service-account.json", "serviceAccountKey.json", "firebase-service-account.json"];
+    for (const f of possibleFiles) {
+      const p = path.resolve(process.cwd(), f);
+      if (fs.existsSync(p)) {
+        console.log(`📁 Found Firebase Service Account file: ${f}`);
+        return JSON.parse(fs.readFileSync(p, "utf-8"));
+      }
+    }
+    return null;
+  }
+  const resolvedPath = path.resolve(process.cwd(), sa);
+  if (fs.existsSync(resolvedPath)) {
+    return JSON.parse(fs.readFileSync(resolvedPath, "utf-8"));
+  }
+  try {
+    return JSON.parse(sa);
+  } catch (e) {
+    try {
+      return JSON.parse(sa.replace(/\\n/g, "\n"));
+    } catch (e2) {
+      console.error("❌ Invalid FIREBASE_SERVICE_ACCOUNT JSON!");
+      return null;
+    }
+  }
 }
-const db = admin.database();
+
+let db = null;
+const creds = getFirebaseCredentials();
+if (creds) {
+  if (!admin.apps.length) {
+    admin.initializeApp({
+      credential: admin.credential.cert(creds),
+      databaseURL: DATABASE_URL
+    });
+  }
+  db = admin.database();
+}
 
 const projects = [
   "straussil", "cbcdairyil", "straussdryil", "mondelezuz", "danoneuk", "mdlzrusf", "gskhu", "pgpl", "mondelezza", "ulnl", "beiersdorfkz", "beiersdorfpt", "pepsicouk", "ulpt", "bdftr", "marspl", "mondelezde", "jtihr", "pngza2", "beiersdorfuk", "mondelezsa", "beiersdorfsp", "jdetr", "diageotz", "beiersdorfng", "marsbh", "mondelezse", "beiersdorfgr"
@@ -34,7 +92,17 @@ const metrics = [
   { path: "voting_engine", name: "Voting Engine" }
 ];
 
+let grafanaErrorLogged = false;
+
 async function fetchProject(project) {
+  if (!SESSION_ID) {
+    if (!grafanaErrorLogged) {
+      console.error("❌ ERROR: GRAFANA_SESSION_ID is missing!");
+      grafanaErrorLogged = true;
+    }
+    return null;
+  }
+
   const payloadParts = [];
   metrics.forEach(m => {
     payloadParts.push(`target=alias(prod.gauges.selector.queue.${m.path}.${project}.total,'${m.name} - Total')`);
@@ -49,16 +117,25 @@ async function fetchProject(project) {
       headers: { "Cookie": `grafana_session=${SESSION_ID}`, "Content-Type": "application/x-www-form-urlencoded" },
       body: payload
     });
-    if (!response.ok) return null;
+    if (!response.ok) {
+      if (!grafanaErrorLogged) {
+        console.error(`❌ Grafana Error (${response.status}): Check GRAFANA_SESSION_ID`);
+        grafanaErrorLogged = true;
+      }
+      return null;
+    }
     const json = await response.json();
+    if (!Array.isArray(json)) return null;
+
     const groupedData = {};
     json.forEach(series => {
+      if (!series || !series.datapoints) return;
       const dp = series.datapoints.filter(d => d[0] !== null);
       if (dp.length > 0) {
         const last = dp[dp.length - 1];
-        const isOutflow = series.target.includes("Outflow");
-        const isOldest = series.target.includes("Oldest Task");
-        const mName = series.target.split(" - ")[0];
+        const isOutflow = series.target && series.target.includes("Outflow");
+        const isOldest = series.target && series.target.includes("Oldest Task");
+        const mName = series.target ? series.target.split(" - ")[0] : "Unknown";
 
         if (!groupedData[mName]) groupedData[mName] = { lastUpdated: last[1]*1000, total: 0, oldestTask: 0, outflow: 0 };
         if (isOutflow) groupedData[mName].outflow = last[0];
@@ -67,22 +144,26 @@ async function fetchProject(project) {
       }
     });
     return groupedData;
-  } catch (e) { return null; }
+  } catch (e) {
+    return null;
+  }
 }
 
 async function main() {
-  console.log("🚀 Starting specialized Voting Engine feeder...");
-  const RUN_DURATION_MS = 55 * 1000;
+  console.log(`🚀 Starting specialized Voting Engine feeder (Mode: ${isContinuous ? "Continuous" : "Single 55s Run"})...`);
+  const RUN_DURATION_MS = isContinuous ? Infinity : (55 * 1000);
   const INTERVAL_MS     = 5000;
   const startTime = Date.now();
   let baselineData = {};
 
-  try {
-    const snap = await db.ref("engine-voting/grafana/queue_metrics").once("value");
-    if (snap.exists()) baselineData = snap.val();
-  } catch (e) {}
+  if (db) {
+    try {
+      const snap = await db.ref("engine-voting/grafana/queue_metrics").once("value");
+      if (snap.exists()) baselineData = snap.val();
+    } catch (e) {}
+  }
 
-  const killTimer = setTimeout(() => process.exit(0), 58 * 1000);
+  const killTimer = !isContinuous ? setTimeout(() => process.exit(0), 58 * 1000) : null;
 
   while (Date.now() - startTime < RUN_DURATION_MS) {
     const cycleStart = Date.now();
@@ -95,9 +176,11 @@ async function main() {
         results.push(...batchRes);
       }
 
+      let validCount = 0;
       const allData = {};
       for (const { project, data } of results) {
-        if (!data) continue;
+        if (!data || Object.keys(data).length === 0) continue;
+        validCount++;
         const processed = {};
         for (const mName of Object.keys(data)) {
           const cur = data[mName];
@@ -127,15 +210,25 @@ async function main() {
         allData[project] = processed;
       }
 
-      await db.ref("engine-voting/grafana/queue_metrics").set({ ...allData, _lastUpdated: Date.now() });
-      baselineData = allData; // 🔹 Update baseline to prevent duplicate alerts in same run
-      console.log(`✅ Updated: ${new Date().toLocaleTimeString()}`);
-    } catch (e) { console.error("❌ Cycle error:", e.message); }
+      if (validCount > 0) {
+        if (db) {
+          await db.ref("engine-voting/grafana/queue_metrics").set({ ...allData, _lastUpdated: Date.now() });
+        }
+        baselineData = allData;
+        console.log(`✅ Updated Voting: ${new Date().toLocaleTimeString()} (${validCount} projects)`);
+      } else {
+        console.warn(`⚠️ [${new Date().toLocaleTimeString()}] No data received from Grafana.`);
+      }
+    } catch (e) {
+      console.error("❌ Cycle error:", e.message);
+    }
 
-    await new Promise(r => setTimeout(r, Math.max(1000, (cycleStart + INTERVAL_MS) - Date.now())));
+    const elapsed = Date.now() - cycleStart;
+    await new Promise(r => setTimeout(r, Math.max(1000, INTERVAL_MS - elapsed)));
   }
-  clearTimeout(killTimer);
-  await admin.app().delete();
+
+  if (killTimer) clearTimeout(killTimer);
+  if (db && admin.apps.length) await admin.app().delete();
   process.exit(0);
 }
 

@@ -1,14 +1,18 @@
 {
   "name": "trax-firebase-feeder",
   "version": "1.0.0",
-  "main": "src/fetchAndFeed.js",
+  "main": "src/masking_feeder.js",
   "scripts": {
     "start": "node src/masking_feeder.js",
-    "start-masking": "node src/masking_feeder.js"
+    "start-masking": "node src/masking_feeder.js",
+    "dev": "node src/masking_feeder.js --continuous",
+    "start-voting": "node src/voting_feeder.js",
+    "test-telegram": "node src/test_telegram.js",
+    "test-grafana": "node src/test_grafana.js"
   },
   "dependencies": {
+    "dotenv": "^16.4.5",
     "firebase-admin": "^11.11.0",
-    "node-fetch": "^2.7.0",
-    "dotenv": "^16.4.5"
+    "node-fetch": "^2.7.0"
   }
 }
