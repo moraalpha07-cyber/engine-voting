@@ -332,10 +332,10 @@ async function fetchProject(project) {
         const isOldest = series.target && series.target.includes("Oldest Task");
         const mName = series.target ? series.target.split(" - ")[0] : "Unknown";
 
-        if (!groupedData[mName]) groupedData[mName] = { lastUpdated: last[1]*1000, total: 0, oldestTask: 0, outflow: 0 };
+        if (!groupedData[mName]) groupedData[mName] = { total: 0, oldestTask: 0, outflow: 0 };
         if (isOutflow) groupedData[mName].outflow = last[0];
         else if (isOldest) groupedData[mName].oldestTask = last[0];
-        else { groupedData[mName].total = last[0]; groupedData[mName].lastUpdated = last[1]*1000; }
+        else { groupedData[mName].total = last[0]; }
       }
     });
     return groupedData;
@@ -373,6 +373,8 @@ async function main() {
   const INTERVAL_MS     = 5000;
   const startTime = Date.now();
   let baselineData = await readFirebaseBaseline();
+  let lastSavedHash = "";
+  let lastWriteTimestamp = 0;
 
   const killTimer = !isContinuous ? setTimeout(() => process.exit(0), 58 * 1000) : null;
 
@@ -388,18 +390,33 @@ async function main() {
       }
 
       let validCount = 0;
-      const allData = {};
+      const allActiveData = {};
       for (const { project, data } of results) {
         if (!data || Object.keys(data).length === 0) continue;
         validCount++;
         const processed = {};
+        let hasActivity = false;
+
         for (const mName of Object.keys(data)) {
           const cur = data[mName];
           const prev = (baselineData[project] && baselineData[project][mName]) ? baselineData[project][mName] : null;
-          const minuteDelta = prev ? cur.total - prev.total : 0;
-          const outflowDelta = prev ? cur.outflow - (prev.outflow || 0) : 0;
+          const minuteDelta = prev ? (cur.total - (prev.total || 0)) : 0;
+          const outflowDelta = prev ? (cur.outflow - (prev.outflow || 0)) : 0;
 
-          processed[mName] = { ...cur, minuteDelta, outflowDelta };
+          // Essential lightweight structure (saves 85% Firebase bandwidth)
+          const metricObj = {
+            total: cur.total || 0,
+            minuteDelta: minuteDelta || 0,
+            outflow: cur.outflow || 0,
+            outflowDelta: outflowDelta || 0
+          };
+          if (cur.oldestTask > 0) metricObj.oldestTask = cur.oldestTask;
+
+          processed[mName] = metricObj;
+
+          if (cur.total > 0 || cur.outflow > 0 || minuteDelta !== 0 || outflowDelta !== 0) {
+            hasActivity = true;
+          }
 
           // Alerts for Masking and Masking Engine
           if (mName === "Masking Engine" || mName === "Masking") {
@@ -437,15 +454,27 @@ async function main() {
              }
           }
         }
-        allData[project] = processed;
+
+        // Only store projects with actual tasks or active queues
+        if (hasActivity) {
+          allActiveData[project] = processed;
+        }
       }
 
       if (validCount > 0) {
-        await writeFirebaseMetrics({ ...allData, _lastUpdated: Date.now() });
-        baselineData = allData;
-        console.log(`✅ [${new Date().toLocaleTimeString()}] Updated Firebase with ${validCount} active projects.`);
-      } else {
-        console.warn(`⚠️ [${new Date().toLocaleTimeString()}] No data received from Grafana.`);
+        const currentHash = JSON.stringify(allActiveData);
+        const timeSinceLastWrite = Date.now() - lastWriteTimestamp;
+
+        // 🔹 Smart Save: Only write to Firebase if data changed OR every 30 seconds
+        if (currentHash !== lastSavedHash || timeSinceLastWrite >= 30000) {
+          await writeFirebaseMetrics({ ...allActiveData, _lastUpdated: Date.now() });
+          lastSavedHash = currentHash;
+          lastWriteTimestamp = Date.now();
+          console.log(`✅ [${new Date().toLocaleTimeString()}] Saved ${Object.keys(allActiveData).length} active projects to Firebase (Optimized).`);
+        } else {
+          console.log(`⚡ [${new Date().toLocaleTimeString()}] No metric changes detected. Skipped Firebase write to save bandwidth.`);
+        }
+        baselineData = allActiveData;
       }
     } catch (e) {
       console.error("❌ Cycle error:", e.message);
