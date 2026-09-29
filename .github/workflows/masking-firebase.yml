@@ -3,6 +3,8 @@ name: Feed Masking Firebase Every 5 Seconds
 on:
   schedule:
     - cron: '*/5 * * * *'
+  push:
+    branches: [ main ]
   workflow_dispatch:
 
 permissions:
@@ -54,3 +56,11 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           ENFORCE_ACTIVE_HOURS: "true"
         run: npm run start-masking
+
+      - name: Re-trigger this workflow
+        if: steps.check_run.outputs.should_run == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          sleep 3
+          gh workflow run masking-firebase.yml --repo ${{ github.repository }} || true
