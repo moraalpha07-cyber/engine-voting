@@ -4,17 +4,17 @@ const admin = require("firebase-admin");
 const fs = require("fs");
 const path = require("path");
 
-// 🔹 Config
+// 🔹 Config (Loaded securely from environment variables)
 const DATABASE_URL = (process.env.FIREBASE_DATABASE_URL || "https://projectallow-default-rtdb.firebaseio.com/").replace(/\/$/, "");
 const GRAFANA_URL = process.env.GRAFANA_URL || "https://monitor-public.trax-cloud.com/api/datasources/proxy/29/render";
 const GRAFANA_LOGIN_URL = process.env.GRAFANA_LOGIN_URL || "https://monitor-public.trax-cloud.com/login";
 
 let SESSION_ID = process.env.GRAFANA_SESSION_ID;
-const GRAFANA_USER = process.env.GRAFANA_USERNAME || "gss.kurunegala@gssintl.biz";
-const GRAFANA_PASS = process.env.GRAFANA_PASSWORD || "Gssk@2021";
+const GRAFANA_USER = process.env.GRAFANA_USERNAME;
+const GRAFANA_PASS = process.env.GRAFANA_PASSWORD;
 
-// 🔹 Telegram Config
-const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
+// 🔹 Telegram Config (Loaded securely from environment variables)
+const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_NESTPT = process.env.TELEGRAM_CHAT_ID || "@NestPT";
 
 // 🔹 Continuous mode
@@ -23,7 +23,7 @@ const isContinuous = process.env.CONTINUOUS_MODE === "true" || process.argv.incl
 // 🔹 Helper: Send Telegram Alert
 async function sendTelegram(msg, chatId = CHAT_NESTPT) {
   if (!TELEGRAM_TOKEN || !chatId) {
-    console.error("❌ Telegram Bot Token or Chat ID is missing!");
+    console.error("❌ Telegram Bot Token or Chat ID is missing! Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.");
     return;
   }
   const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
@@ -51,7 +51,6 @@ async function sendTelegram(msg, chatId = CHAT_NESTPT) {
 // 🔹 Auto-login to Grafana to get fresh session cookie
 async function loginToGrafana() {
   if (!GRAFANA_USER || !GRAFANA_PASS) {
-    console.warn("⚠️ Cannot auto-login: GRAFANA_USERNAME or GRAFANA_PASSWORD missing.");
     return null;
   }
   console.log("🔐 Logging in to Grafana as:", GRAFANA_USER);

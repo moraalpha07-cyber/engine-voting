@@ -5,12 +5,12 @@ const fs = require("fs");
 const path = require("path");
 
 // 🔹 Config
-const DATABASE_URL = process.env.FIREBASE_DATABASE_URL || "https://projectallow-default-rtdb.firebaseio.com/";
-const GRAFANA_URL = process.env.GRAFANA_URL || "https://monitor.trax-cloud.com/api/datasources/proxy/29/render";
+const DATABASE_URL = (process.env.FIREBASE_DATABASE_URL || "https://projectallow-default-rtdb.firebaseio.com/").replace(/\/$/, "");
+const GRAFANA_URL = process.env.GRAFANA_URL || "https://monitor-public.trax-cloud.com/api/datasources/proxy/29/render";
 const SESSION_ID = process.env.GRAFANA_SESSION_ID;
 
-// 🔹 Telegram Config
-const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN || "1623834999:AAH9kS6Y_R150sI98Qyk7v7SN5MgKhSq1kA";
+// 🔹 Telegram Config (From Environment)
+const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_NESTPT = process.env.TELEGRAM_CHAT_ID || "@NestPT";
 const CHAT_MONDELEZSE = process.env.TELEGRAM_CHAT_ID_MONDELEZ || "@MONDELEZSE";
 
@@ -50,7 +50,6 @@ function getFirebaseCredentials() {
     for (const f of possibleFiles) {
       const p = path.resolve(process.cwd(), f);
       if (fs.existsSync(p)) {
-        console.log(`📁 Found Firebase Service Account file: ${f}`);
         return JSON.parse(fs.readFileSync(p, "utf-8"));
       }
     }
@@ -63,12 +62,7 @@ function getFirebaseCredentials() {
   try {
     return JSON.parse(sa);
   } catch (e) {
-    try {
-      return JSON.parse(sa.replace(/\\n/g, "\n"));
-    } catch (e2) {
-      console.error("❌ Invalid FIREBASE_SERVICE_ACCOUNT JSON!");
-      return null;
-    }
+    return null;
   }
 }
 
@@ -92,16 +86,8 @@ const metrics = [
   { path: "voting_engine", name: "Voting Engine" }
 ];
 
-let grafanaErrorLogged = false;
-
 async function fetchProject(project) {
-  if (!SESSION_ID) {
-    if (!grafanaErrorLogged) {
-      console.error("❌ ERROR: GRAFANA_SESSION_ID is missing!");
-      grafanaErrorLogged = true;
-    }
-    return null;
-  }
+  if (!SESSION_ID) return null;
 
   const payloadParts = [];
   metrics.forEach(m => {
@@ -117,13 +103,7 @@ async function fetchProject(project) {
       headers: { "Cookie": `grafana_session=${SESSION_ID}`, "Content-Type": "application/x-www-form-urlencoded" },
       body: payload
     });
-    if (!response.ok) {
-      if (!grafanaErrorLogged) {
-        console.error(`❌ Grafana Error (${response.status}): Check GRAFANA_SESSION_ID`);
-        grafanaErrorLogged = true;
-      }
-      return null;
-    }
+    if (!response.ok) return null;
     const json = await response.json();
     if (!Array.isArray(json)) return null;
 
@@ -216,8 +196,6 @@ async function main() {
         }
         baselineData = allData;
         console.log(`✅ Updated Voting: ${new Date().toLocaleTimeString()} (${validCount} projects)`);
-      } else {
-        console.warn(`⚠️ [${new Date().toLocaleTimeString()}] No data received from Grafana.`);
       }
     } catch (e) {
       console.error("❌ Cycle error:", e.message);
