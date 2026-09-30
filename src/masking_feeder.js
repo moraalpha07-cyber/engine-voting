@@ -40,9 +40,15 @@ async function sendTelegram(msg, chatId = CHAT_NESTPT) {
     const data = await res.json();
     if (!data.ok) {
       console.error(`❌ Telegram API Error (${chatId}): ${data.description} (Error code: ${data.error_code})`);
+      if (data.error_code === 429) {
+        const retryAfter = (data.parameters && data.parameters.retry_after) || 5;
+        console.log(`⏳ Telegram rate limited. Waiting ${retryAfter}s...`);
+        await new Promise(r => setTimeout(r, retryAfter * 1000));
+      }
     } else {
       console.log(`📱 Telegram alert delivered to ${chatId} (Msg ID: ${data.result.message_id})`);
     }
+    await new Promise(r => setTimeout(r, 200));
   } catch (e) {
     console.error("❌ Telegram request failed:", e.message);
   }
@@ -346,17 +352,19 @@ async function fetchProject(project) {
 
 async function main() {
   const enforceTime = process.env.ENFORCE_ACTIVE_HOURS === "true";
-  if (enforceTime) {
+  function isWithinActiveHours() {
+    if (!enforceTime) return true;
     const colomboHour = parseInt(new Intl.DateTimeFormat('en-US', {
       timeZone: 'Asia/Colombo',
       hour: 'numeric',
       hour12: false
     }).format(new Date()), 10);
+    return colomboHour >= 6 && colomboHour < 23;
+  }
 
-    if (colomboHour < 6 || colomboHour >= 23) {
-      console.log(`⏰ Current Colombo hour is ${colomboHour}. Outside active hours (6 AM - 11 PM). Exiting.`);
-      process.exit(0);
-    }
+  if (!isWithinActiveHours()) {
+    console.log(`⏰ Current Colombo time is outside active hours (6 AM - 11 PM). Exiting gracefully.`);
+    process.exit(0);
   }
 
   // Ensure valid Grafana session before loop
@@ -368,17 +376,32 @@ async function main() {
   await fetchDenominators();
   await fetchPoolProjects();
 
-  console.log(`🚀 Starting Masking engine feeder (Mode: ${isContinuous ? "Continuous" : "Single 55s Run"})...`);
-  const RUN_DURATION_MS = isContinuous ? Infinity : (55 * 1000);
+  const customDurationMin = parseFloat(process.env.RUN_DURATION_MINUTES);
+  let RUN_DURATION_MS = 55 * 1000;
+  if (isContinuous) {
+    RUN_DURATION_MS = Infinity;
+  } else if (!isNaN(customDurationMin) && customDurationMin > 0) {
+    RUN_DURATION_MS = customDurationMin * 60 * 1000;
+  }
+
+  console.log(`🚀 Starting Masking engine feeder (Duration: ${isContinuous ? "Continuous" : (RUN_DURATION_MS / 60000).toFixed(1) + " mins"})...`);
   const INTERVAL_MS     = 5000;
   const startTime = Date.now();
   let baselineData = await readFirebaseBaseline();
   let lastSavedHash = "";
   let lastWriteTimestamp = 0;
 
-  const killTimer = !isContinuous ? setTimeout(() => process.exit(0), 58 * 1000) : null;
+  const killTimer = isFinite(RUN_DURATION_MS) ? setTimeout(() => {
+    console.log(`⏱️ Run duration reached (${(RUN_DURATION_MS / 60000).toFixed(1)} mins). Finishing cleanly.`);
+    process.exit(0);
+  }, RUN_DURATION_MS + 5000) : null;
 
   while (Date.now() - startTime < RUN_DURATION_MS) {
+    if (!isWithinActiveHours()) {
+      console.log(`⏰ Current Colombo time is now outside active hours (6 AM - 11 PM). Exiting cleanly.`);
+      break;
+    }
+
     const cycleStart = Date.now();
     try {
       const BATCH_SIZE = 15;
@@ -441,15 +464,17 @@ async function main() {
                    denoPrefixOrSuffix = " 🟢 (GOOD)";
                 }
 
+                // Compact pool badge (small indicator without huge warnings)
+                const poolBadge = isPool ? " 🚫 <small>[POOL]</small>" : "";
+
                 const msg = `<b>[${now}]</b>\n` +
                             `<b>${emoji} ${displayType} Alert:</b>\n\n` +
-                            `<b>${project.toUpperCase()}${isPool ? " 🚫 (POOL - DO NOT WORK)" : ""}</b>\n\n` +
-                            (isPool ? `<b>⚠️ POOL PROJECT - DO NOT TOUCH ⚠️</b>\n\n` : ``) +
+                            `<b>${project.toUpperCase()}${poolBadge}</b>\n\n` +
                             `<code>Drop:          ${minuteDelta}</code>\n` +
                             `<code>Current Queue: ${cur.total}${queueWarning}</code>\n` +
                             `<code>Deno:          ${denoVal}${denoPrefixOrSuffix}</code>\n` +
                             `<code>Outflow:       ${cur.outflow}</code>`;
-                console.log(`🚨 Alert sent for ${project} (${mName})! Drop: ${minuteDelta}`);
+                console.log(`🚨 Alert sent for ${project} (${mName})! Drop: ${minuteDelta}${isPool ? " [Pool]" : ""}`);
                 await sendTelegram(msg, CHAT_NESTPT);
              }
           }

@@ -79,7 +79,7 @@ if (creds) {
 }
 
 const projects = [
-  "straussil", "cbcdairyil", "straussdryil", "mondelezuz", "danoneuk", "mdlzrusf", "gskhu", "pgpl", "mondelezza", "ulnl", "beiersdorfkz", "beiersdorfpt", "pepsicouk", "ulpt", "bdftr", "marspl", "mondelezde", "jtihr", "pngza2", "beiersdorfuk", "mondelezsa", "beiersdorfsp", "jdetr", "diageotz", "beiersdorfng", "marsbh", "mondelezse", "beiersdorfgr"
+  "straussil", "cbcdairyil", "straussdryil", "mondelezuz", "danoneuk", "mdlzrusf", "gskhu", "gskpl", "pgpl", "mondelezza", "ulnl", "beiersdorfkz", "beiersdorfpt", "pepsicouk", "ulpt", "bdftr", "marspl", "mondelezde", "jtihr", "pngza2", "beiersdorfuk", "mondelezsa", "beiersdorfsp", "jdetr", "diageotz", "beiersdorfng", "marsbh", "mondelezse", "beiersdorfgr"
 ];
 
 const metrics = [
