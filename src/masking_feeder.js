@@ -26,42 +26,60 @@ const GRAFANA_PASS = process.env.GRAFANA_PASSWORD;
 
 // 🔹 Telegram Config (Loaded securely from environment variables)
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const CHAT_NESTPT = process.env.TELEGRAM_CHAT_ID || "@NestPT";
+const CHAT_DROPS = process.env.TELEGRAM_CHAT_ID_DROPS || process.env.TELEGRAM_CHAT_ID || "@NestPT, -1004486777652";
 
 // 🔹 Continuous mode: Default to true unless single run specified
 const isSingleRun = process.argv.includes("--single-run");
 
-// 🔹 Helper: Send Telegram Alert
-async function sendTelegram(msg, chatId = CHAT_NESTPT) {
-  if (!TELEGRAM_TOKEN || !chatId) {
+// 🔹 Helper: Send Telegram Alert (supports single or comma-separated chat IDs)
+async function sendTelegram(msg, chatIds = CHAT_DROPS) {
+  if (!TELEGRAM_TOKEN || !chatIds) {
     console.error("❌ Telegram Bot Token or Chat ID is missing! Set TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID.");
     return;
   }
-  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: msg,
-        parse_mode: "HTML"
-      })
-    });
-    const data = await res.json();
-    if (!data.ok) {
-      console.error(`❌ Telegram API Error (${chatId}): ${data.description} (Error code: ${data.error_code})`);
-      if (data.error_code === 429) {
-        const retryAfter = (data.parameters && data.parameters.retry_after) || 5;
-        console.log(`⏳ Telegram rate limited. Waiting ${retryAfter}s...`);
-        await new Promise(r => setTimeout(r, retryAfter * 1000));
+  const targets = (Array.isArray(chatIds) ? chatIds : String(chatIds).split(","))
+    .map(c => c.trim())
+    .filter(Boolean);
+
+  for (const chatId of targets) {
+    const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: msg,
+          parse_mode: "HTML"
+        })
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        console.error(`❌ Telegram API Error (${chatId}): ${data.description} (Error code: ${data.error_code})`);
+        if (data.description && data.description.includes("can't parse entities")) {
+          // Retry without HTML parse mode if entity parsing failed
+          console.log(`🔄 Retrying ${chatId} alert in plain text...`);
+          await fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: chatId,
+              text: msg.replace(/<[^>]+>/g, "")
+            })
+          });
+        }
+        if (data.error_code === 429) {
+          const retryAfter = (data.parameters && data.parameters.retry_after) || 5;
+          console.log(`⏳ Telegram rate limited. Waiting ${retryAfter}s...`);
+          await new Promise(r => setTimeout(r, retryAfter * 1000));
+        }
+      } else {
+        console.log(`📱 Telegram alert delivered to ${chatId} (Msg ID: ${data.result.message_id})`);
       }
-    } else {
-      console.log(`📱 Telegram alert delivered to ${chatId} (Msg ID: ${data.result.message_id})`);
+      await new Promise(r => setTimeout(r, 200));
+    } catch (e) {
+      console.error(`❌ Telegram request failed for ${chatId}:`, e.message);
     }
-    await new Promise(r => setTimeout(r, 200));
-  } catch (e) {
-    console.error("❌ Telegram request failed:", e.message);
   }
 }
 
@@ -469,7 +487,7 @@ async function main() {
                 }
 
                 // Compact pool badge (small indicator without huge warnings)
-                const poolBadge = isPool ? " 🚫 <small>[POOL]</small>" : "";
+                const poolBadge = isPool ? " 🚫 <i>[POOL]</i>" : "";
 
                 const msg = `<b>[${now}]</b>\n` +
                             `<b>${emoji} ${displayType} Alert:</b>\n\n` +
@@ -479,7 +497,7 @@ async function main() {
                             `<code>Deno:          ${denoVal}${denoPrefixOrSuffix}</code>\n` +
                             `<code>Outflow:       ${cur.outflow}</code>`;
                 console.log(`🚨 Alert sent for ${project} (${mName})! Drop: ${minuteDelta}${isPool ? " [Pool]" : ""}`);
-                await sendTelegram(msg, CHAT_NESTPT);
+                await sendTelegram(msg, CHAT_DROPS);
              }
           }
         }

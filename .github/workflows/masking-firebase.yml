@@ -62,7 +62,8 @@ jobs:
           GRAFANA_LOGIN_URL: https://monitor-public.trax-cloud.com/login
           FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          TELEGRAM_CHAT_ID_DROPS: ${{ secrets.TELEGRAM_CHAT_ID_DROPS || secrets.TELEGRAM_CHAT_ID || '@NestPT, -1004486777652' }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID || '@NestPT, -1004486777652' }}
           ENFORCE_ACTIVE_HOURS: "true"
           RUN_DURATION_MINUTES: "320"
         run: node src/masking_feeder.js

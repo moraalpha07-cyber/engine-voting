@@ -28,8 +28,8 @@ const GRAFANA_PASS = process.env.GRAFANA_PASSWORD;
 
 // Telegram Config
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-// Dedicated Inflow Chat / Channel / Group ID (Falls back to Masking Easy group)
-const TELEGRAM_CHAT_INFLOW = process.env.TELEGRAM_CHAT_ID_INFLOW || "-1004486777652";
+// Dedicated Inflow Chat / Channel / Group ID
+const TELEGRAM_CHAT_INFLOW = process.env.TELEGRAM_CHAT_ID_INFLOW || "@NestPT";
 
 // Google Sheet URL for Deno RPH > 60 Filter
 const SHEET_CSV_URL = process.env.INFLOW_SHEET_CSV_URL || "https://docs.google.com/spreadsheets/d/e/2PACX-1vQNNSc4kr3Q0JqpkAgOW6Po8KECailK3FVp81Zj4y2X8R7KWVfDGvmbizcatCXqUreoRP2T366ehw-R/pub?gid=619575519&single=true&output=csv";
@@ -39,43 +39,50 @@ const DENO_RPH_THRESHOLD = parseFloat(process.env.INFLOW_DENO_RPH_THRESHOLD) || 
 const isSingleCycle = process.argv.includes("--single-cycle");
 
 // =========================================================================
-// 🔹 Telegram Alert Helper
+// 🔹 Telegram Alert Helper (supports single or comma-separated chat IDs)
 // =========================================================================
-async function sendTelegram(msg, chatId = TELEGRAM_CHAT_INFLOW) {
-  if (!TELEGRAM_TOKEN || !chatId) {
+async function sendTelegram(msg, chatIds = TELEGRAM_CHAT_INFLOW) {
+  if (!TELEGRAM_TOKEN || !chatIds) {
     console.error("❌ Telegram Bot Token or Chat ID is missing! Please configure TELEGRAM_BOT_TOKEN and TELEGRAM_CHAT_ID_INFLOW.");
     return false;
   }
-  const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
-  try {
-    const res = await fetch(url, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        chat_id: chatId,
-        text: msg,
-        parse_mode: "HTML"
-      }),
-      timeout: 10000
-    });
-    const data = await res.json();
-    if (!data.ok) {
-      console.error(`❌ Telegram API Error (${chatId}): ${data.description} (Code: ${data.error_code})`);
-      if (data.error_code === 429) {
-        const retryAfter = (data.parameters && data.parameters.retry_after) || 5;
-        console.log(`⏳ Telegram rate limited. Waiting ${retryAfter}s...`);
-        await new Promise(r => setTimeout(r, retryAfter * 1000));
+  const targets = (Array.isArray(chatIds) ? chatIds : String(chatIds).split(","))
+    .map(c => c.trim())
+    .filter(Boolean);
+
+  let success = true;
+  for (const chatId of targets) {
+    const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chat_id: chatId,
+          text: msg,
+          parse_mode: "HTML"
+        }),
+        timeout: 10000
+      });
+      const data = await res.json();
+      if (!data.ok) {
+        console.error(`❌ Telegram API Error (${chatId}): ${data.description} (Code: ${data.error_code})`);
+        if (data.error_code === 429) {
+          const retryAfter = (data.parameters && data.parameters.retry_after) || 5;
+          console.log(`⏳ Telegram rate limited. Waiting ${retryAfter}s...`);
+          await new Promise(r => setTimeout(r, retryAfter * 1000));
+        }
+        success = false;
+      } else {
+        console.log(`📱 Inflow Alert delivered to ${chatId} (Msg ID: ${data.result.message_id})`);
+        await new Promise(r => setTimeout(r, 200));
       }
-      return false;
-    } else {
-      console.log(`📱 Inflow Alert delivered to ${chatId} (Msg ID: ${data.result.message_id})`);
-      await new Promise(r => setTimeout(r, 200));
-      return true;
+    } catch (e) {
+      console.error(`❌ Telegram request failed for ${chatId}:`, e.message);
+      success = false;
     }
-  } catch (e) {
-    console.error("❌ Telegram request failed:", e.message);
-    return false;
   }
+  return success;
 }
 
 // =========================================================================
