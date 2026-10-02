@@ -2,7 +2,7 @@ require("dotenv").config();
 const fetch = require("node-fetch");
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const TELEGRAM_CHAT_INFLOW = process.env.TELEGRAM_CHAT_ID_INFLOW || "-1004486777652";
+const TELEGRAM_CHAT_INFLOW = process.env.TELEGRAM_CHAT_ID_INFLOW || "@NestPT";
 
 async function testTelegram() {
   console.log("🔍 Testing Telegram Inflow Notification Channel...");

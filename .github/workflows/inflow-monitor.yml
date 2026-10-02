@@ -45,7 +45,7 @@ jobs:
           GRAFANA_URL: https://monitor-public.trax-cloud.com/api/datasources/proxy/29/render
           GRAFANA_LOGIN_URL: https://monitor-public.trax-cloud.com/login
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID_INFLOW: ${{ secrets.TELEGRAM_CHAT_ID_INFLOW || '-1004486777652' }}
+          TELEGRAM_CHAT_ID_INFLOW: ${{ secrets.TELEGRAM_CHAT_ID_INFLOW || '@NestPT' }}
           ENFORCE_ACTIVE_HOURS: "false"
           RUN_DURATION_MINUTES: "320"
         run: node src/inflow_feeder.js

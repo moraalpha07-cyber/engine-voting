@@ -4,12 +4,12 @@ cd /d "%~dp0"
 
 echo ====================================================
 echo   Launching Both Trax Telegram Monitors:
-echo   1. Masking Drops Monitor  -> @NestPT (Masking Dharana)
-echo   2. Inflow Monitor         -> -1004486777652 (Masking Easy)
+echo   1. Masking Drops Monitor  -> -1004486777652 (Masking Dharana)
+echo   2. Inflow Monitor         -> @NestPT (Masking Easy)
 echo ====================================================
 
-start "1. Masking Drops Feeder (@NestPT)" cmd /k "start_masking.bat"
-start "2. Inflow Monitor (-1004486777652)" cmd /k "start_inflow.bat"
+start "1. Masking Drops Feeder (-1004486777652)" cmd /k "start_masking.bat"
+start "2. Inflow Monitor (@NestPT)" cmd /k "start_inflow.bat"
 
 echo.
 echo Both monitors have been started in separate windows!

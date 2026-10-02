@@ -2,7 +2,7 @@ require("dotenv").config();
 const fetch = require("node-fetch");
 
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const CHAT_DROPS = process.env.TELEGRAM_CHAT_ID_DROPS || process.env.TELEGRAM_CHAT_ID || "@NestPT";
+const CHAT_DROPS = process.env.TELEGRAM_CHAT_ID_DROPS || process.env.TELEGRAM_CHAT_ID || "-1004486777652";
 
 async function testTelegram() {
   console.log("🔍 Testing Telegram Masking Drop Alert Channel...");
