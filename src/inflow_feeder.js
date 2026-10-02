@@ -407,10 +407,9 @@ async function main() {
   const startTime = Date.now();
 
   const INTERVAL_MS = 5000; // Check every 5 seconds for fast alert response
-  let baselineData = {}; // In-memory baseline dictionary
+  let baselineData = await readFirebaseInflowBaseline(); // In-memory baseline dictionary initialized with last saved state
   let lastSavedHash = "";
   let lastSheetRefreshTime = Date.now();
-  let isFirstRun = true;
   let cycleCount = 0;
 
   while (Date.now() - startTime < RUN_DURATION_MS) {
@@ -449,7 +448,7 @@ async function main() {
           const key = item.key;
           const currentTotal = data.total || 0;
           const prevEntry = baselineData[key];
-          const prevTotal = prevEntry !== undefined ? prevEntry.total : currentTotal;
+          const prevTotal = prevEntry !== undefined ? (prevEntry.total || 0) : 0;
           const minuteDelta = currentTotal - prevTotal;
 
           currentCycleData[key] = {
@@ -463,9 +462,8 @@ async function main() {
           };
 
           // 🚨 INFLOW DETECTION:
-          // Trigger alert on EVERY positive queue addition (minuteDelta > 0)
-          // Skip the very first startup cycle so we don't spam alerts for existing queue
-          if (!isFirstRun && minuteDelta > 0) {
+          // Trigger alert on EVERY positive queue addition (inflow > 0 and currentTotal > 0)
+          if (minuteDelta > 0 && currentTotal > 0) {
             alertCountThisCycle++;
             const nowColombo = new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' });
             
@@ -496,9 +494,8 @@ async function main() {
         // Update in-memory baseline
         baselineData = currentCycleData;
 
-        if (isFirstRun) {
-          console.log(`✅ Baseline initialized for ${Object.keys(currentCycleData).length} target projects. Inflow monitor is RUNNING CONTINUOUSLY.`);
-          isFirstRun = false;
+        if (cycleCount === 1) {
+          console.log(`✅ [${new Date().toLocaleTimeString()}] Baseline active for ${Object.keys(currentCycleData).length} target projects. Monitoring inflow continuously.`);
         } else if (cycleCount % 12 === 0) { // Log heartbeat every ~1 minute
           console.log(`💓 [${new Date().toLocaleTimeString()}] Monitoring active (${Object.keys(currentCycleData).length} projects checked, Cycle #${cycleCount})`);
         }
