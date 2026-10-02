@@ -467,17 +467,24 @@ async function main() {
             alertCountThisCycle++;
             const nowColombo = new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' });
             
+            const parsedDeno = parseFloat(item.deno) || 0;
+            const isHighDeno = parsedDeno >= 1.0;
+            const highDenoBadge = isHighDeno ? " 🔥 <b>[HIGH DENO &gt; 1.0]</b>" : "";
+            const denoLine = isHighDeno
+              ? `<code>Deno:          ${item.deno} 🔥 (HIGH &gt; 1.0)</code>`
+              : `<code>Deno:          ${item.deno}</code>`;
+
             const msg = `<b>[${nowColombo}]</b>\n` +
-                        `<b>${item.emoji} 📥 INFLOW ALERT (Deno RPH &gt; 60):</b>\n\n` +
+                        `<b>${item.emoji} 📥 INFLOW ALERT (Deno RPH &gt; 60):</b>${highDenoBadge}\n\n` +
                         `<b>Project:</b> <code>${item.project.toUpperCase()}</code>\n` +
                         `<b>Task:</b> <code>${item.displayName}</code>\n\n` +
                         `<code>Inflow Added:  +${minuteDelta}</code>\n` +
                         `<code>Current Queue: ${currentTotal}</code>\n` +
                         `<code>Deno RPH:      ${item.denoRph}</code>\n` +
-                        `<code>Deno:          ${item.deno}</code>\n` +
+                        `${denoLine}\n` +
                         `<code>Outflow:       ${data.outflow}</code>`;
 
-            console.log(`🚨 [Alert #${alertCountThisCycle}] Inflow detected for ${item.project.toUpperCase()} (${item.displayName})! Added: +${minuteDelta}, Total: ${currentTotal}`);
+            console.log(`🚨 [Alert #${alertCountThisCycle}] Inflow detected for ${item.project.toUpperCase()} (${item.displayName})! Added: +${minuteDelta}, Total: ${currentTotal}, Deno: ${item.deno}${isHighDeno ? " [HIGH DENO > 1.0]" : ""}`);
             await sendTelegram(msg, TELEGRAM_CHAT_INFLOW);
           }
         }

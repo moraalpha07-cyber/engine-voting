@@ -16,14 +16,14 @@ async function testTelegram() {
 
   const now = new Date().toLocaleString('en-US', { timeZone: 'Asia/Colombo' });
   const sampleMsg = `<b>[${now}]</b>\n` +
-                    `<b>🔴 📥 INFLOW ALERT TEST (Deno RPH &gt; 60):</b>\n\n` +
-                    `<b>Project:</b> <code>MDLZRUSF</code>\n` +
+                    `<b>🔴 📥 INFLOW ALERT (Deno RPH &gt; 60):</b> 🔥 <b>[HIGH DENO &gt; 1.0]</b>\n\n` +
+                    `<b>Project:</b> <code>MONDELEZNO</code>\n` +
                     `<b>Task:</b> <code>Engine Masking</code>\n\n` +
-                    `<code>Inflow Added:  +25</code>\n` +
-                    `<code>Current Queue: 531</code>\n` +
-                    `<code>Deno RPH:      187.73</code>\n` +
-                    `<code>Deno:          0.83</code>\n` +
-                    `<code>Outflow:       120</code>\n\n` +
+                    `<code>Inflow Added:  +35</code>\n` +
+                    `<code>Current Queue: 318</code>\n` +
+                    `<code>Deno RPH:      162.42</code>\n` +
+                    `<code>Deno:          1.15 🔥 (HIGH &gt; 1.0)</code>\n` +
+                    `<code>Outflow:       141</code>\n\n` +
                     `<i>✅ This is a test notification from the Grafana Inflow Bot!</i>`;
 
   const url = `https://api.telegram.org/bot${TELEGRAM_TOKEN}/sendMessage`;
