@@ -1,0 +1,76 @@
+name: Continuous Inflow Telegram Monitor
+
+on:
+  schedule:
+    # Runs every 30 minutes as a persistent keeper / watchdog
+    - cron: '*/30 * * * *'
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  actions: write
+  contents: read
+
+concurrency:
+  group: inflow-monitor-runner
+  cancel-in-progress: false
+
+jobs:
+  feed:
+    name: Monitor Inflow (Deno RPH > 60) & Alerts
+    runs-on: ubuntu-22.04
+    timeout-minutes: 350
+    continue-on-error: true
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Check if another run is active
+        id: check_run
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ACTIVE_RUNS=$(gh run list --workflow inflow-monitor.yml --status in_progress --json databaseId --jq "[.[] | select(.databaseId < ${{ github.run_id }})] | length" 2>/dev/null || echo 0)
+          if [ "${ACTIVE_RUNS:-0}" -gt 0 ]; then
+            echo "should_run=false" >> $GITHUB_OUTPUT
+            echo "⚠️ Another run is already active. Skipping duplicate run."
+          else
+            echo "should_run=true" >> $GITHUB_OUTPUT
+            echo "🚀 No active runs found. Starting Inflow Monitor."
+          fi
+
+      - name: Setup Node.js
+        if: steps.check_run.outputs.should_run == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+
+      - name: Install dependencies
+        if: steps.check_run.outputs.should_run == 'true'
+        run: npm ci || npm install
+
+      - name: Run Inflow Feeder (Continuous 5+ Hours)
+        if: steps.check_run.outputs.should_run == 'true'
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          FIREBASE_DATABASE_URL: ${{ secrets.FIREBASE_DATABASE_URL }}
+          GRAFANA_SESSION_ID: ${{ secrets.GRAFANA_SESSION_ID }}
+          GRAFANA_USERNAME: ${{ secrets.GRAFANA_USERNAME }}
+          GRAFANA_PASSWORD: ${{ secrets.GRAFANA_PASSWORD }}
+          GRAFANA_URL: https://monitor-public.trax-cloud.com/api/datasources/proxy/29/render
+          GRAFANA_LOGIN_URL: https://monitor-public.trax-cloud.com/login
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID_INFLOW: ${{ secrets.TELEGRAM_CHAT_ID_INFLOW || '-1004486777652' }}
+          ENFORCE_ACTIVE_HOURS: "false"
+          RUN_DURATION_MINUTES: "320"
+        run: node src/inflow_feeder.js
+
+      - name: Trigger next workflow cycle
+        if: steps.check_run.outputs.should_run == 'true' && always()
+        env:
+          GH_TOKEN: ${{ secrets.PAT_TOKEN || secrets.GH_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          echo "🔄 Dispatching next workflow cycle..."
+          gh workflow run inflow-monitor.yml --repo ${{ github.repository }} 2>/dev/null || echo "ℹ️ Next run will be automatically started by the 30-minute scheduler."

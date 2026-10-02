@@ -7,6 +7,9 @@
     "start-masking": "node src/masking_feeder.js",
     "dev": "node src/masking_feeder.js --continuous",
     "start-voting": "node src/voting_feeder.js",
+    "start-inflow": "node src/inflow_feeder.js",
+    "dev-inflow": "node src/inflow_feeder.js --continuous",
+    "test-inflow-telegram": "node src/test_inflow_telegram.js",
     "test-telegram": "node src/test_telegram.js",
     "test-grafana": "node src/test_grafana.js"
   },

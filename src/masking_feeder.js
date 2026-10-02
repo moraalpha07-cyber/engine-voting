@@ -4,6 +4,17 @@ const admin = require("firebase-admin");
 const fs = require("fs");
 const path = require("path");
 
+// =========================================================================
+// 🔹 Global Error Handlers (Prevents Bot from Crashing on Network Glitches)
+// =========================================================================
+process.on("uncaughtException", (err) => {
+  console.error("⚠️ [Recovered] Uncaught Exception:", err.message);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("⚠️ [Recovered] Unhandled Promise Rejection:", reason);
+});
+
 // 🔹 Config (Loaded securely from environment variables)
 const DATABASE_URL = (process.env.FIREBASE_DATABASE_URL || "https://projectallow-default-rtdb.firebaseio.com/").replace(/\/$/, "");
 const GRAFANA_URL = process.env.GRAFANA_URL || "https://monitor-public.trax-cloud.com/api/datasources/proxy/29/render";
@@ -17,8 +28,8 @@ const GRAFANA_PASS = process.env.GRAFANA_PASSWORD;
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
 const CHAT_NESTPT = process.env.TELEGRAM_CHAT_ID || "@NestPT";
 
-// 🔹 Continuous mode
-const isContinuous = process.env.CONTINUOUS_MODE === "true" || process.argv.includes("--continuous");
+// 🔹 Continuous mode: Default to true unless single run specified
+const isSingleRun = process.argv.includes("--single-run");
 
 // 🔹 Helper: Send Telegram Alert
 async function sendTelegram(msg, chatId = CHAT_NESTPT) {
@@ -376,30 +387,23 @@ async function main() {
   await fetchDenominators();
   await fetchPoolProjects();
 
+  console.log(`🚀 Starting Masking engine feeder (Mode: ${isSingleRun ? "Single Run" : "Continuous Infinite Monitor"})...`);
   const customDurationMin = parseFloat(process.env.RUN_DURATION_MINUTES);
-  let RUN_DURATION_MS = 55 * 1000;
-  if (isContinuous) {
-    RUN_DURATION_MS = Infinity;
-  } else if (!isNaN(customDurationMin) && customDurationMin > 0) {
-    RUN_DURATION_MS = customDurationMin * 60 * 1000;
-  }
-
-  console.log(`🚀 Starting Masking engine feeder (Duration: ${isContinuous ? "Continuous" : (RUN_DURATION_MS / 60000).toFixed(1) + " mins"})...`);
-  const INTERVAL_MS     = 5000;
+  const RUN_DURATION_MS = (!isNaN(customDurationMin) && customDurationMin > 0)
+    ? customDurationMin * 60 * 1000
+    : Infinity;
   const startTime = Date.now();
+
+  const INTERVAL_MS = 5000;
   let baselineData = await readFirebaseBaseline();
   let lastSavedHash = "";
   let lastWriteTimestamp = 0;
 
-  const killTimer = isFinite(RUN_DURATION_MS) ? setTimeout(() => {
-    console.log(`⏱️ Run duration reached (${(RUN_DURATION_MS / 60000).toFixed(1)} mins). Finishing cleanly.`);
-    process.exit(0);
-  }, RUN_DURATION_MS + 5000) : null;
-
   while (Date.now() - startTime < RUN_DURATION_MS) {
-    if (!isWithinActiveHours()) {
-      console.log(`⏰ Current Colombo time is now outside active hours (6 AM - 11 PM). Exiting cleanly.`);
-      break;
+    if (enforceTime && !isWithinActiveHours()) {
+      console.log(`⏰ [${new Date().toLocaleTimeString()}] Current Colombo time is outside active hours (6 AM - 11 PM). Waiting 60s...`);
+      await new Promise(r => setTimeout(r, 60000));
+      continue;
     }
 
     const cycleStart = Date.now();
@@ -505,17 +509,21 @@ async function main() {
       console.error("❌ Cycle error:", e.message);
     }
 
+    if (isSingleRun) {
+      console.log("🏁 Single run completed.");
+      break;
+    }
+
     const elapsed = Date.now() - cycleStart;
     const sleepTime = Math.max(1000, INTERVAL_MS - elapsed);
     await new Promise(r => setTimeout(r, sleepTime));
   }
 
-  if (killTimer) clearTimeout(killTimer);
   if (db && admin.apps.length) await admin.app().delete();
   process.exit(0);
 }
 
 main().catch(err => {
   console.error("❌ Fatal Error:", err);
-  process.exit(1);
+  setTimeout(() => main(), 5000);
 });
