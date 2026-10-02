@@ -26,7 +26,7 @@ const GRAFANA_PASS = process.env.GRAFANA_PASSWORD;
 
 // 🔹 Telegram Config (Loaded securely from environment variables)
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-const CHAT_DROPS = process.env.TELEGRAM_CHAT_ID_DROPS || process.env.TELEGRAM_CHAT_ID || "-1004486777652";
+const CHAT_DROPS = process.env.TELEGRAM_CHAT_ID_DROPS || process.env.TELEGRAM_CHAT_ID || "@NestPT";
 
 // 🔹 Continuous mode: Default to true unless single run specified
 const isSingleRun = process.argv.includes("--single-run");

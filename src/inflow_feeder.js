@@ -28,8 +28,8 @@ const GRAFANA_PASS = process.env.GRAFANA_PASSWORD;
 
 // Telegram Config
 const TELEGRAM_TOKEN = process.env.TELEGRAM_BOT_TOKEN;
-// Dedicated Inflow Chat ID (Masking Easy Group)
-const TELEGRAM_CHAT_INFLOW = process.env.TELEGRAM_CHAT_ID_INFLOW || "@NestPT";
+// Dedicated Inflow Chat ID
+const TELEGRAM_CHAT_INFLOW = process.env.TELEGRAM_CHAT_ID_INFLOW || "-1004486777652";
 
 // Google Sheet URL for Deno RPH > 60 Filter
 const SHEET_CSV_URL = process.env.INFLOW_SHEET_CSV_URL || "https://docs.google.com/spreadsheets/d/e/2PACX-1vQNNSc4kr3Q0JqpkAgOW6Po8KECailK3FVp81Zj4y2X8R7KWVfDGvmbizcatCXqUreoRP2T366ehw-R/pub?gid=619575519&single=true&output=csv";
